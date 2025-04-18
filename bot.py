@@ -52,9 +52,7 @@ async def reportkill(
     time: str = None,
 ):
     await interaction.response.defer()
-    if time is None:
-        time = datetime.datetime.utcnow().isoformat()
-
+    time = time or datetime.datetime.utcnow().isoformat()
     payload = {
         "player": player,
         "victim": victim,
@@ -65,7 +63,6 @@ async def reportkill(
         "mode": "pu-kill",
     }
     headers = {"Authorization": f"Bearer {API_KEY}"}
-
     try:
         async with httpx.AsyncClient() as client:
             resp = await client.post(
@@ -75,14 +72,13 @@ async def reportkill(
                 timeout=10.0,
             )
         resp.raise_for_status()
-    except httpx.HTTPStatusError as http_err:
-        # bubble up the response body for debugging
-        text = await resp.aread()
+    except httpx.HTTPStatusError:
+        body = resp.text
         return await interaction.followup.send(
-            f"❌ Failed to report kill (status {resp.status_code}):\n```{text}```"
+            f"❌ ReportKill failed [{resp.status_code}]:\n```{body}```"
         )
     except Exception as e:
-        return await interaction.followup.send(f"❌ Failed to report kill:\n```{e}```")
+        return await interaction.followup.send(f"❌ Error: `{e}`")
 
     await interaction.followup.send(
         f"✅ Kill recorded for **{player}** vs **{victim}** at `{time}`."
@@ -94,24 +90,22 @@ async def reportkill(
 async def kills(interaction: discord.Interaction):
     await interaction.response.defer()
     headers = {"Authorization": f"Bearer {API_KEY}"}
-
     try:
         async with httpx.AsyncClient() as client:
             resp = await client.get(f"{API_BASE}/kills", headers=headers, timeout=10.0)
         resp.raise_for_status()
         data = resp.json()
-    except httpx.HTTPStatusError as http_err:
-        text = await resp.aread()
+    except httpx.HTTPStatusError:
+        body = resp.text
         return await interaction.followup.send(
-            f"❌ Could not fetch kills (status {resp.status_code}):\n```{text}```"
+            f"❌ ListKills failed [{resp.status_code}]:\n```{body}```"
         )
     except Exception as e:
-        return await interaction.followup.send(f"❌ Could not fetch kills:\n```{e}```")
+        return await interaction.followup.send(f"❌ Error: `{e}`")
 
     if not data:
         return await interaction.followup.send("📭 No kills recorded yet.")
 
-    # show up to the last 5
     lines = [
         f"**{e['id']}** • {e['player']} ➔ {e['victim']} • {e['time']} "
         f"({e['zone']}, {e['weapon']})"
@@ -120,5 +114,4 @@ async def kills(interaction: discord.Interaction):
     await interaction.followup.send("\n".join(lines))
 
 
-# ─── Run ─────────────────────────────────────────────────────────────────────────
 bot.run(TOKEN)
