@@ -8,6 +8,7 @@ from discord import app_commands
 from discord.ext import commands
 from dotenv import load_dotenv
 from discord import ui, ButtonStyle, Embed
+from discord.ui import View
 
 # ─── Load & validate env ─────────────────────────────────────────────────────────
 load_dotenv()
@@ -30,36 +31,54 @@ intents = discord.Intents.default()
 bot = commands.Bot(command_prefix="!", intents=intents)
 
 
-class GenerateKeyView(ui.View):
+class GenerateKeyView(View):
+    """Persistent view that sits in #🔑-kill-tracker-key forever."""
+
     def __init__(self):
-        super().__init__(timeout=None)
+        super().__init__(timeout=None)  # never time out
 
-    @ui.button(label="Generate Key", style=ButtonStyle.primary, emoji="🔑")
-    async def generate_key(self, button: ui.Button, interaction: discord.Interaction):
-        await interaction.response.defer(ephemeral=True)
-
-        # call your FastAPI /keys endpoint
-        discord_id = str(interaction.user.id)
+    @discord.ui.button(
+        label="Generate Key",
+        style=discord.ButtonStyle.primary,
+        emoji="🔑",
+    )
+    async def generate(
+        self,
+        interaction: discord.Interaction,
+        button: discord.ui.Button,
+    ):
+        """User clicked: POST /keys and DM them the key."""
+        # call your backend
         try:
             async with httpx.AsyncClient() as client:
                 resp = await client.post(
                     f"{API_BASE}/keys",
-                    headers={"X-Discord-ID": discord_id},
+                    headers={"X-Discord-ID": str(interaction.user.id)},
                     timeout=10.0,
                 )
             resp.raise_for_status()
-            key = resp.json()["key"]
+            data = resp.json()
+            new_key = data["key"]
         except Exception as e:
-            return await interaction.followup.send(
-                f"❌ Could not generate key:\n```{e}```", ephemeral=True
+            return await interaction.response.send_message(
+                f"❌ Could not generate key:\n```{e}```",
+                ephemeral=True,
             )
 
-        embed = Embed(
-            title="🔑 Your Kill‑Tracker API Key",
-            description=f"```{key}```\nUse this key in your BeowulfHunter client. Valid for 72 hours.",
-            color=discord.Color.blue(),
+        embed = discord.Embed(
+            title="Your API key has been generated:",
+            description=f"`{new_key}`",
+            color=discord.Color.blurple(),
         )
-        await interaction.followup.send(embed=embed, ephemeral=True)
+        embed.add_field(
+            name="Usage",
+            value=(
+                "Use this key in your kill‑tracker client to post kills in "
+                "#💀-pu-kill-feed and/or #💀-ac-kill-feed."
+            ),
+            inline=False,
+        )
+        await interaction.response.send_message(embed=embed, ephemeral=True)
 
 
 @bot.event
@@ -67,24 +86,23 @@ async def on_ready():
     await bot.tree.sync()
     print(f"🗡️ Logged in as {bot.user} — slash commands synced.")
 
-    # post (or re‑post) the Generate Key prompt in your key channel
+    # send the “generate key” embed + button once, if it’s not already there
     channel = bot.get_channel(KEY_CHANNEL_ID)
     if channel:
-        view = GenerateKeyView()
-        embed = Embed(
-            title="Generate BlightVeil Kill Tracker Key",
+        embed = discord.Embed(
+            title="Generate BlightVeil Kill Tracker Key",
             description=(
-                "Click the button below to generate a unique key for the BlightVeil Kill‑Tracker.\n\n"
-                "Each key is valid for 72 hours. You may generate a new one at any time."
+                "Click the button below to generate a unique key for the "
+                "BlightVeil Kill Tracker. Use this key in your kill tracker "
+                "client to post your kills in the #💀-pu-kill-feed and/or "
+                "#💀-ac-kill-feed.\n\n"
+                "Each key is valid for 72 hours. You may generate a new key at any time.\n\n"
+                "[Download BV KillTracker](https://example.com/download)\n"
             ),
             color=discord.Color.dark_gray(),
         )
-        embed.set_footer(
-            text="Use this key in your client to post kills to #💀‑pu‑kill‑feed and/or #💀‑ac‑kill‑feed."
-        )
-        # you might want to delete any previous prompt messages here,
-        # or check that you only send it once.
-        await channel.send(embed=embed, view=view)
+        # attach our persistent view
+        await channel.send(embed=embed, view=GenerateKeyView())
 
 
 # ─── /reportkill ─────────────────────────────────────────────────────────────────
