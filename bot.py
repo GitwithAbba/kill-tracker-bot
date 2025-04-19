@@ -44,10 +44,10 @@ class GenerateKeyView(discord.ui.View):
         super().__init__(timeout=None)  # never time out
 
     @discord.ui.button(
-        custom_id="generate_key_button",
         label="Generate Key",
         style=discord.ButtonStyle.primary,
         emoji="🔑",
+        custom_id="killtracker:generate_key",
     )
     async def generate_key(
         self, interaction: discord.Interaction, button: discord.ui.Button
@@ -80,6 +80,9 @@ class GenerateKeyView(discord.ui.View):
             f"🔑 **Your API key** has been generated:\n```\n{new_key}\n```",
             ephemeral=True,
         )
+
+
+bot.add_view(GenerateKeyView())
 
 
 @bot.event
