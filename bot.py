@@ -22,6 +22,7 @@ KEY_CHANNEL_ID = int(
 PU_KILL_FEED_ID = int(os.getenv("PU_KILL_FEED"))
 AC_KILL_FEED_ID = int(os.getenv("AC_KILL_FEED"))
 
+
 if not TOKEN or not API_BASE or not API_KEY:
     logging.critical(
         "Missing configuration. "
@@ -32,6 +33,8 @@ if not TOKEN or not API_BASE or not API_KEY:
 # ─── Bot setup ────────────────────────────────────────────────────────────────────
 intents = discord.Intents.default()
 bot = commands.Bot(command_prefix="!", intents=intents)
+
+# Register the persistent view *before* we log in*
 
 
 class GenerateKeyView(discord.ui.View):
@@ -78,6 +81,9 @@ class GenerateKeyView(discord.ui.View):
         )
 
 
+bot.add_view(GenerateKeyView())
+
+
 @bot.event
 async def on_ready():
     await bot.tree.sync()
@@ -86,20 +92,41 @@ async def on_ready():
     # send the “generate key” embed + button once, if it’s not already there
     channel = bot.get_channel(KEY_CHANNEL_ID)
     if channel:
-        embed = discord.Embed(
-            title="Generate BlightVeil Kill Tracker Key",
-            description=(
-                "Click the button below to generate a unique key for the "
-                "BlightVeil Kill Tracker. Use this key in your kill tracker "
-                "client to post your kills in the #💀-pu-kill-feed and/or "
-                "#💀-ac-kill-feed.\n\n"
-                "Each key is valid for 72 hours. You may generate a new key at any time.\n\n"
-                "[Download BV KillTracker](https://example.com/download)\n"
-            ),
-            color=discord.Color.dark_gray(),
-        )
+        # only send the card if we don’t see an existing one
+        async for msg in channel.history(limit=50):
+            if msg.author.id == bot.user.id and msg.embeds:
+                break
+        else:
+
+            embed = discord.Embed(
+                title="Generate BlightVeil Kill Tracker Key",
+                description=(
+                    "Click the button below to generate a unique key for the "
+                    "BlightVeil Kill Tracker. Use this key in your kill tracker "
+                    "client to post your kills in the #💀-pu-kill-feed and/or "
+                    "#💀-ac-kill-feed.\n\n"
+                    "Each key is valid for 72 hours. You may generate a new key at any time.\n\n"
+                    "[Download BV KillTracker](https://example.com/download)\n"
+                ),
+                color=discord.Color.dark_gray(),
+            )
         # attach our persistent view
         await channel.send(embed=embed, view=GenerateKeyView())
+
+    # 2) prime last_kill_id so we don’t backfill
+    async with httpx.AsyncClient() as client:
+        resp = await client.get(
+            f"{API_BASE}/kills", headers={"Authorization": f"Bearer {API_KEY}"}
+        )
+        resp.raise_for_status()
+        all_kills = resp.json()
+    if all_kills:
+        global last_kill_id
+        last_kill_id = max(k["id"] for k in all_kills)
+
+    # 3) start the loop (if it isn’t already)
+    if not fetch_and_post_kills.is_running():
+        fetch_and_post_kills.start()
 
 
 # ─── /reportkill ─────────────────────────────────────────────────────────────────
@@ -215,24 +242,20 @@ async def kills(interaction: discord.Interaction):
 last_kill_id = 0
 
 
-@tasks.loop(seconds=10)  # run every 10 seconds (tune as you like)
+@tasks.loop(seconds=10)
 async def fetch_and_post_kills():
     global last_kill_id
-
-    headers = {"Authorization": f"Bearer {API_KEY}"}
     async with httpx.AsyncClient() as client:
-        resp = await client.get(f"{API_BASE}/kills", headers=headers, timeout=10.0)
-    resp.raise_for_status()
-    kills = resp.json()
+        resp = await client.get(
+            f"{API_BASE}/kills", headers={"Authorization": f"Bearer {API_KEY}"}
+        )
+        resp.raise_for_status()
+        kills = resp.json()
 
-    # Sort oldest → newest
-    kills.sort(key=lambda e: e["id"])
-
-    for kill in kills:
+    for kill in sorted(kills, key=lambda e: e["id"]):
         if kill["id"] <= last_kill_id:
             continue
 
-        # choose feed channel
         feed_id = PU_KILL_FEED_ID if kill["mode"] == "pu-kill" else AC_KILL_FEED_ID
         channel = bot.get_channel(feed_id)
         if not channel:
@@ -243,28 +266,15 @@ async def fetch_and_post_kills():
             color=discord.Color.red(),
             timestamp=discord.utils.parse_time(kill["time"]),
         )
-        embed.add_field(name="Killer", value=kill["player"], inline=True)
-        embed.add_field(name="Victim", value=kill["victim"], inline=True)
-        embed.add_field(name="Zone", value=kill["zone"], inline=True)
-        embed.add_field(name="Weapon", value=kill["weapon"], inline=True)
-        embed.add_field(name="Damage", value=kill["damage_type"], inline=True)
-        embed.add_field(name="Time", value=kill["time"], inline=False)
+        embed.add_field("Killer", kill["player"], inline=True)
+        embed.add_field("Victim", kill["victim"], inline=True)
+        embed.add_field("Zone", kill["zone"], inline=True)
+        embed.add_field("Weapon", kill["weapon"], inline=True)
+        embed.add_field("Damage", kill["damage_type"], inline=True)
+        embed.add_field("Time", kill["time"], inline=False)
 
         await channel.send(embed=embed)
         last_kill_id = kill["id"]
-
-
-@bot.event
-async def on_ready():
-    await bot.tree.sync()
-    print(f"🗡️ Logged in as {bot.user} — slash commands synced.")
-
-    # send your GenerateKeyView here…
-    # …
-
-    # start our polling loop if not already running
-    if not fetch_and_post_kills.is_running():
-        fetch_and_post_kills.start()
 
 
 bot.run(TOKEN)
