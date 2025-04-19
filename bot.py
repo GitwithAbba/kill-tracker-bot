@@ -87,18 +87,14 @@ async def on_ready():
     await bot.tree.sync()
     print(f"🗡️ Logged in as {bot.user} — slash commands synced.")
 
-    # register our persistent view now that the loop is alive
-    bot.add_view(GenerateKeyView())
-
-    # send the “generate key” embed + button once, if it’s not already there
     channel = bot.get_channel(KEY_CHANNEL_ID)
     if channel:
-        # only send the card if we don’t see an existing one
+        # See if we've already posted our "Generate Key" card
         async for msg in channel.history(limit=50):
             if msg.author.id == bot.user.id and msg.embeds:
                 break
         else:
-
+            # only get here if no break occurred
             embed = discord.Embed(
                 title="Generate BlightVeil Kill Tracker Key",
                 description=(
@@ -111,8 +107,7 @@ async def on_ready():
                 ),
                 color=discord.Color.dark_gray(),
             )
-        # attach our persistent view
-        await channel.send(embed=embed, view=GenerateKeyView())
+            await channel.send(embed=embed, view=GenerateKeyView())
 
     # 2) prime last_kill_id so we don’t backfill
     async with httpx.AsyncClient() as client:
