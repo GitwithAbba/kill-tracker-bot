@@ -44,6 +44,7 @@ class GenerateKeyView(discord.ui.View):
         super().__init__(timeout=None)  # never time out
 
     @discord.ui.button(
+        custom_id="generate_key_button",
         label="Generate Key",
         style=discord.ButtonStyle.primary,
         emoji="🔑",
