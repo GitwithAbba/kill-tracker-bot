@@ -31,7 +31,7 @@ intents = discord.Intents.default()
 bot = commands.Bot(command_prefix="!", intents=intents)
 
 
-class GenerateKeyView(View):
+class GenerateKeyView(discord.ui.View):
     """Persistent view that sits in #🔑-kill-tracker-key forever."""
 
     def __init__(self):
@@ -42,43 +42,53 @@ class GenerateKeyView(View):
         style=discord.ButtonStyle.primary,
         emoji="🔑",
     )
-    async def generate(
+    async def generate_key(
         self,
-        interaction: discord.Interaction,
-        button: discord.ui.Button,
+        interaction: discord.Interaction,  # <-- only interaction, no button param
     ):
-        """User clicked: POST /keys and DM them the key."""
-        # call your backend
+        # show the “thinking…” indicator (ephemeral so only they see it)
+        await interaction.response.defer(ephemeral=True)
+
+        # call your backend to mint a new key
         try:
             async with httpx.AsyncClient() as client:
                 resp = await client.post(
                     f"{API_BASE}/keys",
-                    headers={"X-Discord-ID": str(interaction.user.id)},
+                    headers={
+                        "Authorization": f"Bearer {API_KEY}",
+                        "X-Discord-ID": str(interaction.user.id),
+                    },
                     timeout=10.0,
                 )
             resp.raise_for_status()
             data = resp.json()
             new_key = data["key"]
         except Exception as e:
-            return await interaction.response.send_message(
+            return await interaction.followup.send(
                 f"❌ Could not generate key:\n```{e}```",
                 ephemeral=True,
             )
 
-        embed = discord.Embed(
-            title="Your API key has been generated:",
-            description=f"`{new_key}`",
-            color=discord.Color.blurple(),
+        # DM them back their new key
+        await interaction.followup.send(
+            f"🔑 **Your API key** has been generated:\n```\n{new_key}\n```",
+            ephemeral=True,
         )
-        embed.add_field(
-            name="Usage",
-            value=(
-                "Use this key in your kill‑tracker client to post kills in "
-                "#💀-pu-kill-feed and/or #💀-ac-kill-feed."
-            ),
-            inline=False,
-        )
-        await interaction.response.send_message(embed=embed, ephemeral=True)
+
+        # AND post a little confirmation embed into your #🔑‑kill‑tracker‑key channel
+        channel = interaction.client.get_channel(KEY_CHANNEL_ID)
+        if channel:
+            embed = discord.Embed(
+                title="New Kill-Tracker Key Generated",
+                color=discord.Color.blurple(),
+                timestamp=discord.utils.utcnow(),
+            )
+            embed.add_field(
+                name=interaction.user.display_name,
+                value=f"🔑 `{new_key}`",
+                inline=False,
+            )
+            await channel.send(embed=embed)
 
 
 @bot.event
