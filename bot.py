@@ -81,13 +81,13 @@ class GenerateKeyView(discord.ui.View):
         )
 
 
-bot.add_view(GenerateKeyView())
-
-
 @bot.event
 async def on_ready():
     await bot.tree.sync()
     print(f"🗡️ Logged in as {bot.user} — slash commands synced.")
+
+    # register our persistent view now that the loop is alive
+    bot.add_view(GenerateKeyView())
 
     # send the “generate key” embed + button once, if it’s not already there
     channel = bot.get_channel(KEY_CHANNEL_ID)
