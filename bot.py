@@ -18,6 +18,8 @@ API_KEY = os.getenv("BACKEND_KEY")
 KEY_CHANNEL_ID = int(
     os.getenv("KEY_CHANNEL_ID")
 )  # put your #kill-tracker-key channel’s ID here
+PU_KILL_FEED_ID = int(os.getenv("PU_KILL_FEED"))
+AC_KILL_FEED_ID = int(os.getenv("AC_KILL_FEED"))
 
 if not TOKEN or not API_BASE or not API_KEY:
     logging.critical(
@@ -44,7 +46,8 @@ class GenerateKeyView(discord.ui.View):
     )
     async def generate_key(
         self,
-        interaction: discord.Interaction,  # <-- only interaction, no button param
+        interaction: discord.Interaction,
+        button: discord.ui.Button,
     ):
         # show the “thinking…” indicator (ephemeral so only they see it)
         await interaction.response.defer(ephemeral=True)
@@ -124,6 +127,13 @@ async def on_ready():
     weapon="Weapon used",
     damage_type="Type of damage",
     time="ISO timestamp (defaults to now)",
+    mode="Which mode: PU or AC",
+)
+@app_commands.choices(
+    mode=[
+        app_commands.Choice(name="Public Universe", value="pu-kill"),
+        app_commands.Choice(name="Arena Commander", value="ac-kill"),
+    ]
 )
 async def reportkill(
     interaction: discord.Interaction,
@@ -133,8 +143,10 @@ async def reportkill(
     weapon: str,
     damage_type: str,
     time: str = None,
+    mode: str = "pu-kill",
 ):
-    await interaction.response.defer()
+    # 1) defer & prepare
+    await interaction.response.defer(ephemeral=True)
     time = time or datetime.datetime.utcnow().isoformat()
     payload = {
         "player": player,
@@ -144,8 +156,11 @@ async def reportkill(
         "damage_type": damage_type,
         "time": time,
         "mode": "pu-kill",
+        "mode": mode,
     }
     headers = {"Authorization": f"Bearer {API_KEY}"}
+
+    # 2) send to backend
     try:
         async with httpx.AsyncClient() as client:
             resp = await client.post(
@@ -155,17 +170,33 @@ async def reportkill(
                 timeout=10.0,
             )
         resp.raise_for_status()
-    except httpx.HTTPStatusError:
-        body = resp.text
-        return await interaction.followup.send(
-            f"❌ ReportKill failed [{resp.status_code}]:\n```{body}```"
-        )
     except Exception as e:
-        return await interaction.followup.send(f"❌ Error: `{e}`")
+        return await interaction.followup.send(
+            f"❌ Could not record kill:\n```{e}```", ephemeral=True
+        )
 
+    # 3) confirm to the user
     await interaction.followup.send(
-        f"✅ Kill recorded for **{player}** vs **{victim}** at `{time}`."
+        f"✅ Kill recorded for **{player}** vs **{victim}** at `{time}`.",
+        ephemeral=True,
     )
+
+    # 4) mirror to the proper feed channel
+    feed_id = PU_KILL_FEED_ID if mode == "pu-kill" else AC_KILL_FEED_ID
+    channel = interaction.client.get_channel(feed_id)
+    if channel:
+        embed = discord.Embed(
+            title="BlightVeil Kill",
+            color=discord.Color.red(),
+            timestamp=discord.utils.utcnow(),
+        )
+        embed.add_field(name="Killer", value=player, inline=True)
+        embed.add_field(name="Victim", value=victim, inline=True)
+        embed.add_field(name="Zone", value=zone, inline=True)
+        embed.add_field(name="Weapon", value=weapon, inline=True)
+        embed.add_field(name="Damage", value=damage_type, inline=True)
+        embed.add_field(name="Time", value=time, inline=False)
+        await channel.send(embed=embed)
 
 
 # ─── /kills ──────────────────────────────────────────────────────────────────────
