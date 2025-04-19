@@ -1,7 +1,8 @@
 import os
 import datetime
 import logging
-
+import asyncio
+from discord.ext import tasks
 import httpx
 import discord
 from discord import app_commands
@@ -45,9 +46,7 @@ class GenerateKeyView(discord.ui.View):
         emoji="🔑",
     )
     async def generate_key(
-        self,
-        interaction: discord.Interaction,
-        button: discord.ui.Button,
+        self, interaction: discord.Interaction, button: discord.ui.Button
     ):
         # show the “thinking…” indicator (ephemeral so only they see it)
         await interaction.response.defer(ephemeral=True)
@@ -77,21 +76,6 @@ class GenerateKeyView(discord.ui.View):
             f"🔑 **Your API key** has been generated:\n```\n{new_key}\n```",
             ephemeral=True,
         )
-
-        # AND post a little confirmation embed into your #🔑‑kill‑tracker‑key channel
-        channel = interaction.client.get_channel(KEY_CHANNEL_ID)
-        if channel:
-            embed = discord.Embed(
-                title="New Kill-Tracker Key Generated",
-                color=discord.Color.blurple(),
-                timestamp=discord.utils.utcnow(),
-            )
-            embed.add_field(
-                name=interaction.user.display_name,
-                value=f"🔑 `{new_key}`",
-                inline=False,
-            )
-            await channel.send(embed=embed)
 
 
 @bot.event
@@ -155,7 +139,6 @@ async def reportkill(
         "weapon": weapon,
         "damage_type": damage_type,
         "time": time,
-        "mode": "pu-kill",
         "mode": mode,
     }
     headers = {"Authorization": f"Bearer {API_KEY}"}
@@ -226,6 +209,62 @@ async def kills(interaction: discord.Interaction):
         for e in data[-5:]
     ]
     await interaction.followup.send("\n".join(lines))
+
+
+# Keep track of the highest kill ID we've posted so far
+last_kill_id = 0
+
+
+@tasks.loop(seconds=10)  # run every 10 seconds (tune as you like)
+async def fetch_and_post_kills():
+    global last_kill_id
+
+    headers = {"Authorization": f"Bearer {API_KEY}"}
+    async with httpx.AsyncClient() as client:
+        resp = await client.get(f"{API_BASE}/kills", headers=headers, timeout=10.0)
+    resp.raise_for_status()
+    kills = resp.json()
+
+    # Sort oldest → newest
+    kills.sort(key=lambda e: e["id"])
+
+    for kill in kills:
+        if kill["id"] <= last_kill_id:
+            continue
+
+        # choose feed channel
+        feed_id = PU_KILL_FEED_ID if kill["mode"] == "pu-kill" else AC_KILL_FEED_ID
+        channel = bot.get_channel(feed_id)
+        if not channel:
+            continue
+
+        embed = discord.Embed(
+            title="BlightVeil Kill",
+            color=discord.Color.red(),
+            timestamp=discord.utils.parse_time(kill["time"]),
+        )
+        embed.add_field(name="Killer", value=kill["player"], inline=True)
+        embed.add_field(name="Victim", value=kill["victim"], inline=True)
+        embed.add_field(name="Zone", value=kill["zone"], inline=True)
+        embed.add_field(name="Weapon", value=kill["weapon"], inline=True)
+        embed.add_field(name="Damage", value=kill["damage_type"], inline=True)
+        embed.add_field(name="Time", value=kill["time"], inline=False)
+
+        await channel.send(embed=embed)
+        last_kill_id = kill["id"]
+
+
+@bot.event
+async def on_ready():
+    await bot.tree.sync()
+    print(f"🗡️ Logged in as {bot.user} — slash commands synced.")
+
+    # send your GenerateKeyView here…
+    # …
+
+    # start our polling loop if not already running
+    if not fetch_and_post_kills.is_running():
+        fetch_and_post_kills.start()
 
 
 bot.run(TOKEN)
