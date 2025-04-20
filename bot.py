@@ -194,12 +194,26 @@ async def reportkill(
             color=discord.Color.red(),
             timestamp=discord.utils.utcnow(),
         )
-        embed.add_field(name="Killer", value=player, inline=True)
-        embed.add_field(name="Victim", value=victim, inline=True)
+        # make the killer’s name clickable
+        profile_url = f"https://robertsspaceindustries.com/citizens/{player}"
+        embed.set_author(name=player, url=profile_url)
+        # if you have an avatar URL from your API, do:
+        # embed.set_thumbnail(url=avatar_url)
+
+        # victim as a link too
+        victim_url = f"https://robertsspaceindustries.com/citizens/{victim}"
+        embed.add_field(name="Victim", value=f"[{victim}]({victim_url})", inline=True)
+
         embed.add_field(name="Zone", value=zone, inline=True)
         embed.add_field(name="Weapon", value=weapon, inline=True)
         embed.add_field(name="Damage", value=damage_type, inline=True)
-        embed.add_field(name="Time", value=time, inline=False)
+
+        # extra fields from your backend payload
+        embed.add_field(name="Mode", value=mode, inline=True)
+        embed.add_field(
+            name="Ship", value=payload.get("killers_ship", "N/A"), inline=True
+        )
+
         await channel.send(embed=embed)
 
 
@@ -260,12 +274,30 @@ async def fetch_and_post_kills():
             color=discord.Color.red(),
             timestamp=discord.utils.parse_time(kill["time"]),
         )
-        embed.add_field(name="Killer", value=kill["player"], inline=True)
-        embed.add_field(name="Victim", value=kill["victim"], inline=True)
+
+        # Author + clickable profile
+        embed.set_author(
+            name=kill["player"],
+            url=kill["rsi_profile"],
+        )
+        # Optional avatar thumbnail if your API returns it:
+        # embed.set_thumbnail(url=kill["avatar_url"])
+
+        # Victim
+        embed.add_field(
+            name="Victim",
+            value=f"[{kill['victim']}]({kill['rsi_profile'].rsplit('/',1)[0]}/{kill['victim']})",
+            inline=True,
+        )
+
+        # Standard fields
         embed.add_field(name="Zone", value=kill["zone"], inline=True)
         embed.add_field(name="Weapon", value=kill["weapon"], inline=True)
         embed.add_field(name="Damage", value=kill["damage_type"], inline=True)
-        embed.add_field(name="Time", value=kill["time"], inline=False)
+
+        # New richer fields
+        embed.add_field(name="Mode", value=kill["game_mode"], inline=True)
+        embed.add_field(name="Ship", value=kill["killers_ship"], inline=True)
 
         await channel.send(embed=embed)
         last_kill_id = kill["id"]
