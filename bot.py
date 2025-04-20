@@ -253,54 +253,62 @@ last_kill_id = 0
 @tasks.loop(seconds=10)
 async def fetch_and_post_kills():
     global last_kill_id
-    async with httpx.AsyncClient() as client:
-        resp = await client.get(
-            f"{API_BASE}/kills", headers={"Authorization": f"Bearer {API_KEY}"}
-        )
-        resp.raise_for_status()
-        kills = resp.json()
+    try:
+        async with httpx.AsyncClient() as client:
+            resp = await client.get(
+                f"{API_BASE}/kills", headers={"Authorization": f"Bearer {API_KEY}"}
+            )
+            resp.raise_for_status()
+            kills = resp.json()
 
-    for kill in sorted(kills, key=lambda e: e["id"]):
-        if kill["id"] <= last_kill_id:
-            continue
+        for kill in sorted(kills, key=lambda e: e["id"]):
+            if kill["id"] <= last_kill_id:
+                continue
 
-        feed_id = PU_KILL_FEED_ID if kill["mode"] == "pu-kill" else AC_KILL_FEED_ID
-        channel = bot.get_channel(feed_id)
-        if not channel:
-            continue
+            feed_id = PU_KILL_FEED_ID if kill["mode"] == "pu-kill" else AC_KILL_FEED_ID
+            channel = bot.get_channel(feed_id)
+            if not channel:
+                continue
 
-        embed = discord.Embed(
-            title="BlightVeil Kill",
-            color=discord.Color.red(),
-            timestamp=discord.utils.parse_time(kill["time"]),
-        )
+            embed = discord.Embed(
+                title="BlightVeil Kill",
+                color=discord.Color.red(),
+                timestamp=discord.utils.parse_time(kill["time"]),
+            )
 
-        # Author + clickable profile
-        embed.set_author(
-            name=kill["player"],
-            url=kill["rsi_profile"],
-        )
-        # Optional avatar thumbnail if your API returns it:
-        # embed.set_thumbnail(url=kill["avatar_url"])
+            # 1) Author with profile link
+            profile_url = kill.get(
+                "rsi_profile",
+                f"https://robertsspaceindustries.com/citizens/{kill['player']}",
+            )
+            embed.set_author(name=kill["player"], url=profile_url)
 
-        # Victim
-        embed.add_field(
-            name="Victim",
-            value=f"[{kill['victim']}]({kill['rsi_profile'].rsplit('/',1)[0]}/{kill['victim']})",
-            inline=True,
-        )
+            # 2) Thumbnail: avatar or default logo
+            avatar = kill.get("avatar_url", "https://your.cdn/default-logo.png")
+            embed.set_thumbnail(url=avatar)
 
-        # Standard fields
-        embed.add_field(name="Zone", value=kill["zone"], inline=True)
-        embed.add_field(name="Weapon", value=kill["weapon"], inline=True)
-        embed.add_field(name="Damage", value=kill["damage_type"], inline=True)
+            # 3) Core fields
+            embed.add_field(name="Victim", value=kill["victim"], inline=True)
+            embed.add_field(name="Zone", value=kill["zone"], inline=True)
+            embed.add_field(name="Weapon", value=kill["weapon"], inline=True)
+            embed.add_field(name="Damage", value=kill["damage_type"], inline=True)
+            embed.add_field(name="Mode", value=kill["mode"], inline=True)
+            embed.add_field(
+                name="Ship", value=kill.get("killers_ship", "N/A"), inline=True
+            )
 
-        # New richer fields
-        embed.add_field(name="Mode", value=kill["game_mode"], inline=True)
-        embed.add_field(name="Ship", value=kill["killers_ship"], inline=True)
+            # 4) Optional Organization
+            if kill.get("organization"):
+                org_val = kill["organization"]
+                if kill.get("org_url"):
+                    org_val = f"[{org_val}]({kill['org_url']})"
+                embed.add_field(name="Org", value=org_val, inline=True)
 
-        await channel.send(embed=embed)
-        last_kill_id = kill["id"]
+            await channel.send(embed=embed)
+            last_kill_id = kill["id"]
+
+    except Exception:
+        traceback.print_exc()
 
 
 bot.run(TOKEN)
