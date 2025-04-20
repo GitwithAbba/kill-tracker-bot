@@ -260,12 +260,12 @@ async def fetch_and_post_kills():
             color=discord.Color.red(),
             timestamp=discord.utils.parse_time(kill["time"]),
         )
-        embed.add_field("Killer", kill["player"], inline=True)
-        embed.add_field("Victim", kill["victim"], inline=True)
-        embed.add_field("Zone", kill["zone"], inline=True)
-        embed.add_field("Weapon", kill["weapon"], inline=True)
-        embed.add_field("Damage", kill["damage_type"], inline=True)
-        embed.add_field("Time", kill["time"], inline=False)
+        embed.add_field(name="Killer", value=kill["player"], inline=True)
+        embed.add_field(name="Victim", value=kill["victim"], inline=True)
+        embed.add_field(name="Zone", value=kill["zone"], inline=True)
+        embed.add_field(name="Weapon", value=kill["weapon"], inline=True)
+        embed.add_field(name="Damage", value=kill["damage_type"], inline=True)
+        embed.add_field(name="Time", value=kill["time"], inline=False)
 
         await channel.send(embed=embed)
         last_kill_id = kill["id"]
