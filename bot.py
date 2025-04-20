@@ -250,55 +250,6 @@ async def kills(interaction: discord.Interaction):
     await interaction.followup.send("\n".join(lines))
 
 
-last_death_id = 0
-
-
-@tasks.loop(seconds=10)
-async def fetch_and_post_deaths():
-    global last_death_id
-    async with httpx.AsyncClient() as client:
-        resp = await client.get(
-            f"{API_BASE}/deaths", headers={"Authorization": f"Bearer {API_KEY}"}
-        )
-        resp.raise_for_status()
-        deaths = resp.json()
-
-    for death in sorted(deaths, key=lambda e: e["time"]):
-        # you could track by index or timestamp:
-        if death["time"] <= last_death_id:
-            continue
-
-        # pick the same feed (PU vs AC) or a dedicated “deaths” channel:
-        feed_id = (
-            PU_KILL_FEED_ID if "pu" in death["game_mode"].lower() else AC_KILL_FEED_ID
-        )
-        channel = bot.get_channel(feed_id)
-        if not channel:
-            continue
-
-        # build a death‐style embed
-        embed = discord.Embed(
-            title="💀 You Died",
-            color=discord.Color.dark_gray(),
-            timestamp=discord.utils.parse_time(death["time"]),
-        )
-        # Author = killer
-        embed.set_author(
-            name=death["killer"],
-            url=death["rsi_profile"],
-        )
-        # main fields
-        embed.add_field("Victim", death["victim"], inline=True)
-        embed.add_field("Zone", death["zone"], inline=True)
-        embed.add_field("Weapon", death["weapon"], inline=True)
-        embed.add_field("Damage", death["damage_type"], inline=True)
-        embed.add_field("Mode", death["game_mode"], inline=True)
-        embed.add_field("Ship", death["killers_ship"], inline=True)
-
-        await channel.send(embed=embed)
-        last_death_id = death["time"]
-
-
 # Keep track of the highest kill ID we've posted so far
 last_kill_id = 0
 
@@ -373,6 +324,71 @@ async def fetch_and_post_kills():
 
         await channel.send(embed=embed)
         last_kill_id = kill["id"]
+
+
+# Keep track of the last‑seen death time
+last_death_id = ""  # or datetime, whichever you prefer
+
+
+@tasks.loop(seconds=10)
+async def fetch_and_post_deaths():
+    global last_death_id
+
+    async with httpx.AsyncClient() as client:
+        resp = await client.get(
+            f"{API_BASE}/deaths", headers={"Authorization": f"Bearer {API_KEY}"}
+        )
+        resp.raise_for_status()
+        deaths = resp.json()
+
+    for death in sorted(deaths, key=lambda e: e["time"]):
+        if death["time"] <= last_death_id:
+            continue
+
+        # choose feed channel (you can also pick a dedicated “deaths” channel)
+        feed_id = PU_KILL_FEED_ID if "pu" in death["mode"].lower() else AC_KILL_FEED_ID
+        channel = bot.get_channel(feed_id)
+        if not channel:
+            continue
+
+        embed = discord.Embed(
+            title="💀 You Died",
+            color=discord.Color.dark_gray(),
+            timestamp=discord.utils.parse_time(death["time"]),
+        )
+
+        # Author = who killed you
+        embed.set_author(
+            name=death["player"],  # the killer’s handle
+            url=death.get("rsi_profile"),  # their RSI profile
+        )
+
+        # thumbnail their avatar if present
+        if death.get("avatar_url"):
+            embed.set_thumbnail(url=death["avatar_url"])
+
+        # core fields
+        embed.add_field(name="Victim (You)", value=death["victim"], inline=True)
+        embed.add_field(name="Zone", value=death["zone"], inline=True)
+        embed.add_field(name="Weapon", value=death["weapon"], inline=True)
+        embed.add_field(name="Damage", value=death["damage_type"], inline=True)
+        embed.add_field(name="Mode", value=death["mode"], inline=True)
+        embed.add_field(name="Ship", value=death["killers_ship"], inline=True)
+
+        # optional Org
+        org = death.get("organization", {})
+        org_name = org.get("name") or "Unknown"
+        if org.get("url"):
+            embed.add_field(
+                name="Victim Organization",
+                value=f"[{org_name}]({org['url']})",
+                inline=False,
+            )
+        else:
+            embed.add_field(name="Victim Organization", value=org_name, inline=False)
+
+        await channel.send(embed=embed)
+        last_death_id = death["time"]
 
 
 bot.run(TOKEN)
