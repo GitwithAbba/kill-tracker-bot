@@ -10,6 +10,7 @@ from discord.ext import commands
 from dotenv import load_dotenv
 from discord import ui, ButtonStyle, Embed
 from discord.ui import View
+import traceback
 
 # ─── Load & validate env ─────────────────────────────────────────────────────────
 load_dotenv()
@@ -38,10 +39,9 @@ bot = commands.Bot(command_prefix="!", intents=intents)
 
 
 class GenerateKeyView(discord.ui.View):
-    """Persistent view that sits in #🔑-kill-tracker-key forever."""
-
     def __init__(self):
-        super().__init__(timeout=None)  # never time out
+        # make this view truly persistent
+        super().__init__(timeout=None)
 
     @discord.ui.button(
         label="Generate Key",
@@ -52,11 +52,8 @@ class GenerateKeyView(discord.ui.View):
     async def generate_key(
         self, interaction: discord.Interaction, button: discord.ui.Button
     ):
-        # show the “thinking…” indicator (ephemeral so only they see it)
-        await interaction.response.defer(ephemeral=True)
-
-        # call your backend to mint a new key
         try:
+            await interaction.response.defer(ephemeral=True)
             async with httpx.AsyncClient() as client:
                 resp = await client.post(
                     f"{API_BASE}/keys",
@@ -67,37 +64,35 @@ class GenerateKeyView(discord.ui.View):
                     timeout=10.0,
                 )
             resp.raise_for_status()
-            data = resp.json()
-            new_key = data["key"]
-        except Exception as e:
-            return await interaction.followup.send(
-                f"❌ Could not generate key:\n```{e}```",
+            new_key = resp.json()["key"]
+            await interaction.followup.send(
+                f"🔑 **Your API key** has been generated:\n```\n{new_key}\n```",
                 ephemeral=True,
             )
-
-        # DM them back their new key
-        await interaction.followup.send(
-            f"🔑 **Your API key** has been generated:\n```\n{new_key}\n```",
-            ephemeral=True,
-        )
-
-
-bot.add_view(GenerateKeyView())
+        except Exception as e:
+            traceback.print_exc()
+            await interaction.followup.send(
+                f"❌ Something went wrong generating your key:\n```{e}```",
+                ephemeral=True,
+            )
 
 
 @bot.event
 async def on_ready():
+    # register our persistent view now that the loop is running
+    bot.add_view(GenerateKeyView())
+
+    # sync slash commands
     await bot.tree.sync()
     print(f"🗡️ Logged in as {bot.user} — slash commands synced.")
 
+    # post the “Generate Key” card if it’s not already there
     channel = bot.get_channel(KEY_CHANNEL_ID)
     if channel:
-        # See if we've already posted our "Generate Key" card
         async for msg in channel.history(limit=50):
             if msg.author.id == bot.user.id and msg.embeds:
                 break
         else:
-            # only get here if no break occurred
             embed = discord.Embed(
                 title="Generate BlightVeil Kill Tracker Key",
                 description=(
@@ -112,7 +107,7 @@ async def on_ready():
             )
             await channel.send(embed=embed, view=GenerateKeyView())
 
-    # 2) prime last_kill_id so we don’t backfill
+    # prime last_kill_id so we don’t backfill
     async with httpx.AsyncClient() as client:
         resp = await client.get(
             f"{API_BASE}/kills", headers={"Authorization": f"Bearer {API_KEY}"}
@@ -123,7 +118,7 @@ async def on_ready():
         global last_kill_id
         last_kill_id = max(k["id"] for k in all_kills)
 
-    # 3) start the loop (if it isn’t already)
+    # start the background fetch loop
     if not fetch_and_post_kills.is_running():
         fetch_and_post_kills.start()
 
