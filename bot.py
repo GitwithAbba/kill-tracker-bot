@@ -345,39 +345,34 @@ async def fetch_and_post_deaths():
         if death["time"] <= last_death_id:
             continue
 
-        feed_id = PU_KILL_FEED_ID if "pu" in death["mode"].lower() else AC_KILL_FEED_ID
+        # pick feed off the game_mode field
+        feed_id = (
+            PU_KILL_FEED_ID if "pu" in death["game_mode"].lower() else AC_KILL_FEED_ID
+        )
         channel = bot.get_channel(feed_id)
         if not channel:
             continue
 
+        killer_url = death.get("rsi_profile")
         embed = discord.Embed(
             title="💀 You Died",
             color=discord.Color.dark_gray(),
             timestamp=discord.utils.parse_time(death["time"]),
         )
+
+        # show who killed you
         embed.set_author(
             name=death["killer"],
-            url=death["rsi_profile"],
-            icon_url=death.get("avatar_url"),
+            url=killer_url,
         )
-        if death.get("avatar_url"):
-            embed.set_thumbnail(url=death["avatar_url"])
 
+        # core fields
         embed.add_field(name="Victim (You)", value=death["victim"], inline=True)
         embed.add_field(name="Zone", value=death["zone"], inline=True)
         embed.add_field(name="Weapon", value=death["weapon"], inline=True)
         embed.add_field(name="Damage", value=death["damage_type"], inline=True)
         embed.add_field(name="Mode", value=death["game_mode"], inline=True)
         embed.add_field(name="Killer’s Ship", value=death["killers_ship"], inline=True)
-        embed.add_field(
-            name="Killer’s Organization",
-            value=(
-                f"[{death.get('organization_name')}]({death.get('organization_url')})"
-                if death.get("organization_url")
-                else (death.get("organization_name") or "Unknown")
-            ),
-            inline=False,
-        )
 
         await channel.send(embed=embed)
         last_death_id = death["time"]
