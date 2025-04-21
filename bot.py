@@ -268,31 +268,30 @@ async def fetch_and_post_kills():
         if kill["id"] <= last_kill_id:
             continue
 
-        # choose the right feed
         feed_id = PU_KILL_FEED_ID if kill["mode"] == "pu-kill" else AC_KILL_FEED_ID
         channel = bot.get_channel(feed_id)
         if not channel:
             continue
 
-        # build our rich embed
+        # build a rich embed
         embed = discord.Embed(
             title="BlightVeil Kill",
             color=discord.Color.red(),
             timestamp=discord.utils.parse_time(kill["time"]),
         )
 
-        # clickable author (killer)
+        # clickable killer name
         embed.set_author(
             name=kill["player"],
             url=kill["rsi_profile"],
-            # if you ever add avatar_url to the backend /kills, you can do:
-            # icon_url=kill.get("avatar_url")
         )
 
-        # victim as a clickable link, pointing at their profile
+        # clickable victim
         victim_url = kill["rsi_profile"].rstrip("/") + f"/{kill['victim']}"
         embed.add_field(
-            name="Victim", value=f"[{kill['victim']}]({victim_url})", inline=True
+            name="Victim",
+            value=f"[{kill['victim']}]({victim_url})",
+            inline=True,
         )
 
         # standard fields
@@ -300,7 +299,7 @@ async def fetch_and_post_kills():
         embed.add_field(name="Weapon", value=kill["weapon"], inline=True)
         embed.add_field(name="Damage", value=kill["damage_type"], inline=True)
 
-        # extra game info
+        # extra fields
         embed.add_field(name="Mode", value=kill["game_mode"], inline=True)
         embed.add_field(name="Ship", value=kill["killers_ship"], inline=True)
 
