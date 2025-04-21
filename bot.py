@@ -349,7 +349,9 @@ async def fetch_and_post_deaths():
             continue
 
         # choose feed channel (you can also pick a dedicated “deaths” channel)
-        feed_id = PU_KILL_FEED_ID if "pu" in death["mode"].lower() else AC_KILL_FEED_ID
+        feed_id = (
+            PU_KILL_FEED_ID if "pu" in death["game_mode"].lower() else AC_KILL_FEED_ID
+        )
         channel = bot.get_channel(feed_id)
         if not channel:
             continue
@@ -375,7 +377,7 @@ async def fetch_and_post_deaths():
         embed.add_field(name="Zone", value=death["zone"], inline=True)
         embed.add_field(name="Weapon", value=death["weapon"], inline=True)
         embed.add_field(name="Damage", value=death["damage_type"], inline=True)
-        embed.add_field(name="Mode", value=death["mode"], inline=True)
+        embed.add_field(name="Mode", value=death["game_mode"], inline=True)
         embed.add_field(name="Ship", value=death["killers_ship"], inline=True)
 
         # optional Org
