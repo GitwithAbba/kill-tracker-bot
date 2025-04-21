@@ -268,40 +268,61 @@ async def fetch_and_post_kills():
         if kill["id"] <= last_kill_id:
             continue
 
+        # Decide which feed channel
         feed_id = PU_KILL_FEED_ID if kill["mode"] == "pu-kill" else AC_KILL_FEED_ID
         channel = bot.get_channel(feed_id)
         if not channel:
             continue
 
-        # build a rich embed
+        # 1) Build separate URLs for killer vs. victim
+        killer_url = f"https://robertsspaceindustries.com/citizens/{kill['player']}"
+        victim_url = kill.get(
+            "rsi_profile",
+            f"https://robertsspaceindustries.com/citizens/{kill['victim']}",
+        )
+
+        # 2) Pull avatar (or fall back to your logo)
+        avatar_url = kill.get(
+            "avatar_url", "https://your.cdn/default_avatar_or_logo.png"
+        )
+
+        # 3) Pull organization (or fall back to “Unknown”)
+        victim_org = kill.get("organization") or "Unknown"
+
         embed = discord.Embed(
-            title="BlightVeil Kill",
+            title="RRR Kill",
             color=discord.Color.red(),
             timestamp=discord.utils.parse_time(kill["time"]),
         )
 
-        # clickable killer name
+        # Author block (clickable killer name + avatar)
         embed.set_author(
             name=kill["player"],
-            url=kill["rsi_profile"],
+            url=killer_url,
+            icon_url=avatar_url,
         )
 
-        # clickable victim
-        victim_url = kill["rsi_profile"].rstrip("/") + f"/{kill['victim']}"
+        # Thumbnail (bigger version of avatar/logo)
+        embed.set_thumbnail(url=avatar_url)
+
+        # Victim as a markdown link
         embed.add_field(
             name="Victim",
             value=f"[{kill['victim']}]({victim_url})",
             inline=True,
         )
 
-        # standard fields
+        # Standard fields
         embed.add_field(name="Zone", value=kill["zone"], inline=True)
         embed.add_field(name="Weapon", value=kill["weapon"], inline=True)
         embed.add_field(name="Damage", value=kill["damage_type"], inline=True)
 
-        # extra fields
-        embed.add_field(name="Mode", value=kill["game_mode"], inline=True)
-        embed.add_field(name="Ship", value=kill["killers_ship"], inline=True)
+        # Richer fields
+        embed.add_field(name="Mode", value=kill.get("game_mode", "—"), inline=True)
+        embed.add_field(
+            name="Killer’s Ship", value=kill.get("killers_ship", "—"), inline=True
+        )
+        embed.add_field(name="Victim Organization", value=victim_org, inline=True)
 
         await channel.send(embed=embed)
         last_kill_id = kill["id"]
