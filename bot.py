@@ -258,76 +258,86 @@ async def fetch_and_post_kills():
     global last_kill_id
     async with httpx.AsyncClient() as client:
         resp = await client.get(
-            f"{API_BASE}/kills", headers={"Authorization": f"Bearer {API_KEY}"}
+            f"{API_BASE}/kills",
+            headers={"Authorization": f"Bearer {API_KEY}"},
+            timeout=10.0,
         )
         resp.raise_for_status()
         kills = resp.json()
 
-    # sort by ascending ID so we never re‑post
     for kill in sorted(kills, key=lambda e: e["id"]):
         if kill["id"] <= last_kill_id:
             continue
 
-        # choose which channel to post into
         feed_id = PU_KILL_FEED_ID if kill["mode"] == "pu-kill" else AC_KILL_FEED_ID
         channel = bot.get_channel(feed_id)
         if not channel:
             continue
 
-        # 1) killer profile URL
-        killer_profile = kill.get(
-            "rsi_profile",
-            f"https://robertsspaceindustries.com/citizens/{kill['player']}",
-        )
-
-        # 2) victim profile URL (single slash, no doubling)
+        # 1) URLs for killer & victim
+        killer_profile = kill["rsi_profile"]
         victim_profile = f"https://robertsspaceindustries.com/citizens/{kill['victim']}"
 
-        # 3) avatar (fallback to a default if you like)
-        avatar_url = kill.get(
-            "avatar_url", "https://your.cdn/default_avatar_or_logo.png"
-        )
+        # 2) Avatar: either from RSI or your local PNG
+        #    Place your PNG in the same folder as bot.py, e.g. "default-avatar.png"
+        file_to_attach = None
+        if not kill.get("avatar_url"):
+            file_to_attach = discord.File(
+                "3R_Transparent.png", filename="3R_Transparent.png"
+            )
+            avatar_url = "attachment://3R_Transparent.png"
+        else:
+            avatar_url = kill["avatar_url"]
 
+        # 3) Build the embed
         embed = discord.Embed(
             title="BlightVeil Kill",
             color=discord.Color.red(),
             timestamp=discord.utils.parse_time(kill["time"]),
         )
 
-        # author = killer (clickable, with icon)
+        # AUTHOR LINE: clickable, in link‑color
         embed.set_author(
-            name=kill["player"],
+            name=f"Killer: {kill['player']}",
             url=killer_profile,
             icon_url=avatar_url,
         )
 
-        # thumbnail = avatar (bigger)
+        # THUMBNAIL (bigger avatar)
         embed.set_thumbnail(url=avatar_url)
 
-        # victim = single‑slash link
+        # CORE FIELDS
         embed.add_field(
-            name="Victim",
-            value=f"[{kill['victim']}]({victim_profile})",
-            inline=True,
+            name="Victim", value=f"[{kill['victim']}]({victim_profile})", inline=True
         )
-
-        # standard fields
         embed.add_field(name="Zone", value=kill["zone"], inline=True)
         embed.add_field(name="Weapon", value=kill["weapon"], inline=True)
         embed.add_field(name="Damage", value=kill["damage_type"], inline=True)
+        embed.add_field(name="Mode", value=kill["mode"], inline=True)
+        embed.add_field(name="Ship", value=kill["killers_ship"], inline=True)
 
-        # richer fields
-        embed.add_field(name="Mode", value=kill.get("game_mode", "—"), inline=True)
-        embed.add_field(
-            name="Killer’s Ship", value=kill.get("killers_ship", "—"), inline=True
-        )
-        embed.add_field(
-            name="Victim Organization",
-            value=kill.get("organization") or "Unknown",
-            inline=True,
-        )
+        # VICTIM ORGANIZATION
+        org_name = kill.get("organization_name") or "Unknown"
+        org_url = kill.get("organization_url")
+        if org_url:
+            embed.add_field(
+                name="Victim Organization",
+                value=f"[{org_name}]({org_url})",
+                inline=False,
+            )
+        else:
+            embed.add_field(
+                name="Victim Organization",
+                value=org_name,
+                inline=False,
+            )
 
-        await channel.send(embed=embed)
+        # 4) Send, attaching your default PNG if needed
+        if file_to_attach:
+            await channel.send(embed=embed, file=file_to_attach)
+        else:
+            await channel.send(embed=embed)
+
         last_kill_id = kill["id"]
 
 
