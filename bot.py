@@ -276,7 +276,7 @@ async def fetch_and_post_kills():
             continue
 
         # URLs
-        killer_profile = kill["rsi_profile"]
+        killer_profile = f"https://robertsspaceindustries.com/citizens/{kill['player']}"
         victim_profile = f"https://robertsspaceindustries.com/citizens/{kill['victim']}"
 
         # always attach your local PNG
