@@ -203,7 +203,7 @@ async def reportkill(
     channel = bot.get_channel(feed_id)
     if channel:
         embed = discord.Embed(
-            title="BlightVeil Kill",
+            title="RRR Kill",
             color=discord.Color.red(),
             timestamp=discord.utils.utcnow(),
         )
@@ -327,14 +327,6 @@ async def fetch_and_post_kills():
         embed.set_thumbnail(url=thumb)
 
         # send
-        if file_to_attach:
-            await channel.send(embed=embed, file=file_to_attach)
-        else:
-            await channel.send(embed=embed)
-
-        # thumbnail
-        embed.set_thumbnail(url=thumb)
-
         if file_to_attach:
             await channel.send(embed=embed, file=file_to_attach)
         else:
