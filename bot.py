@@ -400,6 +400,18 @@ async def fetch_and_post_deaths():
         embed.add_field(name="Mode", value=death["game_mode"], inline=True)
         embed.add_field(name="Killer’s Ship", value=death["killers_ship"], inline=True)
 
+        # Victim organization
+        org_name = death.get("organization_name") or "Unknown"
+        org_url = death.get("organization_url")
+        if org_url:
+            embed.add_field(
+                name="Victim Organization",
+                value=f"[{org_name}]({org_url})",
+                inline=False,
+            )
+        else:
+            embed.add_field(name="Victim Organization", value=org_name, inline=False)
+
         # thumbnail
         embed.set_thumbnail(url=thumb)
 
