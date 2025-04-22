@@ -332,6 +332,14 @@ async def fetch_and_post_kills():
         else:
             await channel.send(embed=embed)
 
+        # thumbnail
+        embed.set_thumbnail(url=thumb)
+
+        if file_to_attach:
+            await channel.send(embed=embed, file=file_to_attach)
+        else:
+            await channel.send(embed=embed)
+
         last_kill_id = kill["id"]
 
 
