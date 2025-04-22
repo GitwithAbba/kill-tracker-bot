@@ -280,15 +280,15 @@ async def fetch_and_post_kills():
         victim_profile = f"https://robertsspaceindustries.com/citizens/{kill['victim']}"
 
         # pick avatar (remote or local)
-        avatar_url = kill.get("avatar_url")
-        if avatar_url:
+        raw = kill.get("avatar_url") or ""
+        if raw.startswith("http"):
+            thumb = raw
             file_to_attach = None
-            thumb = avatar_url
         else:
+            thumb = "attachment://3R_Transparent.png"
             file_to_attach = discord.File(
                 "3R_Transparent.png", filename="3R_Transparent.png"
             )
-            thumb = "attachment://3R_Transparent.png"
 
         embed = discord.Embed(
             title="RRR Kill",
@@ -367,15 +367,15 @@ async def fetch_and_post_deaths():
         )
 
         # pick avatar
-        avatar_url = death.get("avatar_url")
-        if avatar_url:
+        raw = death.get("avatar_url") or ""
+        if raw.startswith("http"):
+            thumb = raw
             file_to_attach = None
-            thumb = avatar_url
         else:
+            thumb = "attachment://3R_Transparent.png"
             file_to_attach = discord.File(
                 "3R_Transparent.png", filename="3R_Transparent.png"
             )
-            thumb = "attachment://3R_Transparent.png"
 
         embed = discord.Embed(
             title="💀 You Died",
