@@ -353,7 +353,10 @@ async def fetch_and_post_deaths():
             continue
 
         killer_url = death.get("rsi_profile")
-
+        # URLs
+        victim_profile = (
+            f"https://robertsspaceindustries.com/citizens/{death['victim']}"
+        )
         # local PNG again
         file_to_attach = discord.File(
             "3R_Transparent.png", filename="3R_Transparent.png"
@@ -371,7 +374,11 @@ async def fetch_and_post_deaths():
         )
 
         # then your core fields
-        embed.add_field(name="Victim (You)", value=death["victim"], inline=True)
+        embed.add_field(
+            name="Victim (You)",
+            value=f"[{death['victim']}]({victim_profile})",
+            inline=True,
+        )
         embed.add_field(name="Zone", value=death["zone"], inline=True)
         embed.add_field(name="Weapon", value=death["weapon"], inline=True)
         embed.add_field(name="Damage", value=death["damage_type"], inline=True)
