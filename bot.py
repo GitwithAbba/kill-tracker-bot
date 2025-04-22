@@ -276,12 +276,8 @@ async def fetch_and_post_kills():
             continue
 
         # URLs
-        killer_profile = (
-            f"https://robertsspaceindustries.com/citizens/%7Bkill['player']%7D"
-        )
-        victim_profile = (
-            f"https://robertsspaceindustries.com/citizens/%7Bkill['victim']%7D"
-        )
+        killer_profile = f"https://robertsspaceindustries.com/citizens/{kill['player']}"
+        victim_profile = f"https://robertsspaceindustries.com/citizens/{kill['victim']}"
 
         # pick avatar (remote or local)
         avatar_url = kill.get("avatar_url")
