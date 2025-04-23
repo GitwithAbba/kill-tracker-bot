@@ -241,13 +241,13 @@ async def kills(interaction: discord.Interaction):
 
     if not data:
         return await interaction.followup.send("📭 No kills recorded yet.")
-
-    embed = discord.Embed(title="Recent Kills", color=discord.Color.red())
-    embed.add_field(
-        name=f"{e['player']} ➔ {e['victim']}",
-        value=f"{e['time']} • {e['zone']} • {e['weapon']}",
-        inline=False,
-    )
+    for e in data:
+        embed = discord.Embed(title="Recent Kills", color=discord.Color.red())
+        embed.add_field(
+            name=f"{e['player']} ➔ {e['victim']}",
+            value=f"{e['time']} • {e['zone']} • {e['weapon']}",
+            inline=False,
+        )
     await interaction.followup.send(embed=embed)
 
 
