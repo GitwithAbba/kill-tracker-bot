@@ -11,6 +11,7 @@ from dotenv import load_dotenv
 from discord import ui, ButtonStyle, Embed
 from discord.ui import View
 import traceback
+from datetime import datetime, date, timedelta
 
 # ─── Load & validate env ─────────────────────────────────────────────────────────
 load_dotenv()
@@ -97,9 +98,9 @@ async def on_ready():
                 title="Generate BlightVeil Kill Tracker Key",
                 description=(
                     "Click the button below to generate a unique key for the "
-                    "BlightVeil Kill Tracker. Use this key in your kill tracker "
-                    "client to post your kills in the #💀-pu-kill-feed and/or "
-                    "#💀-ac-kill-feed.\n\n"
+                    "RRRthur Pirate Kill Tracker. Use this key in your kill tracker "
+                    "client to post your kills in the #💀pu-kill-feed and/or "
+                    "#💀ac-kill-feed.\n\n"
                     "Each key is valid for 72 hours. You may generate a new key at any time.\n\n"
                     "[Download BV KillTracker](https://example.com/download)\n"
                 ),
@@ -249,6 +250,199 @@ async def kills(interaction: discord.Interaction):
             inline=False,
         )
     await interaction.followup.send(embed=embed)
+
+
+# ─── /topkd ──────────────────────────────────────────────────────────────────────
+
+
+# ─── /kd ──────────────────────────────────────────────────────────────────────
+@bot.tree.command(name="kd", description="Show your overall K/D (or someone else’s)")
+@app_commands.describe(user="RSI handle (defaults to you)")
+async def kd(interaction: discord.Interaction, user: str | None = None):
+    await interaction.response.defer()
+    target = user or interaction.user.name  # fall back to Discord username if you like
+    headers = {"Authorization": f"Bearer {API_KEY}"}
+
+    async with httpx.AsyncClient() as client:
+        # fetch all kills
+        resp_k = await client.get(f"{API_BASE}/kills", headers=headers)
+        resp_k.raise_for_status()
+        kills = resp_k.json()
+        # fetch all deaths
+        resp_d = await client.get(f"{API_BASE}/deaths", headers=headers)
+        resp_d.raise_for_status()
+        deaths = resp_d.json()
+
+    total_kills = sum(1 for k in kills if k["player"] == target)
+    total_deaths = sum(1 for d in deaths if d["victim"] == target)
+    kd_ratio = total_kills / max(1, total_deaths)
+
+    embed = discord.Embed(
+        title=f"K/D for {target}",
+        color=discord.Color.blurple(),
+    )
+    embed.add_field(name="Kills", value=str(total_kills), inline=True)
+    embed.add_field(name="Deaths", value=str(total_deaths), inline=True)
+    embed.add_field(name="Ratio", value=f"{kd_ratio:.2f}", inline=True)
+
+    await interaction.followup.send(embed=embed)
+
+
+# ─── /topkills ──────────────────────────────────────────────────────────────────────
+@bot.tree.command(name="topkills", description="Show the top N players by kills")
+@app_commands.describe(
+    mode="Public Universe or Arena Commander",
+    period="today, week, month, or all time",
+    limit="How many top players to show",
+)
+@app_commands.choices(
+    mode=[
+        app_commands.Choice(name="PU", value="pu-kill"),
+        app_commands.Choice(name="AC", value="ac-kill"),
+    ],
+    period=[
+        app_commands.Choice(name="Today", value="today"),
+        app_commands.Choice(name="This Week", value="week"),
+        app_commands.Choice(name="This Month", value="month"),
+        app_commands.Choice(name="All Time", value="all"),
+    ],
+)
+async def topkills(
+    interaction: discord.Interaction, mode: str, period: str, limit: int = 10
+):
+    await interaction.response.defer()
+    headers = {"Authorization": f"Bearer {API_KEY}"}
+    async with httpx.AsyncClient() as client:
+        resp = await client.get(f"{API_BASE}/kills", headers=headers)
+        resp.raise_for_status()
+        data = resp.json()
+
+    # time filtering
+    def in_period(ts: str) -> bool:
+        dt = datetime.datetime.fromisoformat(ts)
+        now = datetime.datetime.utcnow()
+        if period == "today":
+            return dt.date() == now.date()
+        if period == "week":
+            return (now - dt).days < 7
+        if period == "month":
+            return now.year == dt.year and now.month == dt.month
+        return True  # all
+
+    # aggregate
+    stats: dict[str, int] = {}
+    for k in data:
+        if k["mode"] == mode and in_period(k["time"]):
+            stats[k["player"]] = stats.get(k["player"], 0) + 1
+
+    top = sorted(stats.items(), key=lambda x: x[1], reverse=True)[:limit]
+
+    embed = discord.Embed(
+        title=f"🏆 Top {limit} Kills ({mode} / {period})",
+        color=discord.Color.gold(),
+    )
+    for idx, (player, cnt) in enumerate(top, start=1):
+        embed.add_field(name=f"{idx}. {player}", value=f"{cnt} kills", inline=False)
+
+    await interaction.followup.send(embed=embed)
+
+
+# ─── /toporgs ──────────────────────────────────────────────────────────────────────
+
+
+# ─── /topdeaths ───────────────────────────────────────────────────────────────
+@bot.tree.command(
+    name="topdeaths",
+    description="Show the top N players by how often they died",
+)
+@app_commands.describe(
+    period="today, week, month, or all time",
+    limit="How many top players to show",
+)
+@app_commands.choices(
+    period=[
+        app_commands.Choice(name="Today", value="today"),
+        app_commands.Choice(name="This Week", value="week"),
+        app_commands.Choice(name="This Month", value="month"),
+        app_commands.Choice(name="All Time", value="all"),
+    ],
+)
+async def topdeaths(
+    interaction: discord.Interaction,
+    period: str,
+    limit: int = 10,
+):
+    await interaction.response.defer()
+    # 1) Fetch all death events
+    async with httpx.AsyncClient() as client:
+        resp = await client.get(
+            f"{API_BASE}/deaths",
+            headers={"Authorization": f"Bearer {API_KEY}"},
+            timeout=10.0,
+        )
+        resp.raise_for_status()
+        deaths = resp.json()
+
+    # 2) Filter helper
+    def in_period(ts: str) -> bool:
+        dt = datetime.datetime.fromisoformat(ts.rstrip("Z"))
+        now = datetime.datetime.utcnow()
+        if period == "today":
+            return dt.date() == now.date()
+        if period == "week":
+            return (now - dt).days < 7
+        if period == "month":
+            return now.year == dt.year and now.month == dt.month
+        return True  # all time
+
+    # 3) Tally deaths per victim
+    counts: dict[str, int] = {}
+    for d in deaths:
+        if in_period(d["time"]):
+            counts[d["victim"]] = counts.get(d["victim"], 0) + 1
+
+    # 4) Take top N
+    top_n = sorted(counts.items(), key=lambda x: x[1], reverse=True)[:limit]
+
+    # 5) Build and send embed
+    embed = discord.Embed(
+        title=f"💀 Top {limit} Most-Died Players ({period.capitalize()})",
+        color=discord.Color.dark_gray(),
+    )
+    for idx, (player, cnt) in enumerate(top_n, start=1):
+        embed.add_field(name=f"{idx}. {player}", value=f"{cnt} deaths", inline=False)
+
+    await interaction.followup.send(embed=embed)
+
+
+# ─── Scheduled Cards (Leaderboards) ──────────────────────────────────────────────────────────────────────
+def _date_range(period: str):
+    today = date.today()
+    if period == "daily":
+        start = datetime.combine(today, datetime.min.time())
+        end = start + timedelta(days=1)
+    elif period == "monthly":
+        start = datetime.combine(today.replace(day=1), datetime.min.time())
+        # naive next-month: add 32 days then set day=1
+        nxt = (today.replace(day=1) + timedelta(days=32)).replace(day=1)
+        end = datetime.combine(nxt, datetime.min.time())
+    elif period == "quarterly":
+        q = (today.month - 1) // 3
+        start_month = q * 3 + 1
+        start = datetime.combine(
+            today.replace(month=start_month, day=1), datetime.min.time()
+        )
+        # end = start + 3 months
+        nxt = (start + timedelta(days=92)).replace(day=1)
+        end = datetime.combine(nxt, datetime.min.time())
+    elif period == "yearly":
+        start = datetime.combine(today.replace(month=1, day=1), datetime.min.time())
+        end = datetime.combine(
+            today.replace(year=today.year + 1, month=1, day=1), datetime.min.time()
+        )
+    else:
+        raise ValueError("unknown period")
+    return start, end
 
 
 # Keep track of the highest kill ID we've posted so far
