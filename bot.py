@@ -231,9 +231,8 @@ async def kills(interaction: discord.Interaction):
         resp.raise_for_status()
         data = resp.json()
     except httpx.HTTPStatusError:
-        body = resp.text
         return await interaction.followup.send(
-            f"❌ ListKills failed [{resp.status_code}]:\n```{body}```"
+            f"❌ ListKills failed [{resp.status_code}]:\n```{resp.text}```"
         )
     except Exception as e:
         return await interaction.followup.send(f"❌ Error: `{e}`")
@@ -241,8 +240,9 @@ async def kills(interaction: discord.Interaction):
     if not data:
         return await interaction.followup.send("📭 No kills recorded yet.")
 
-    embed = discord.Embed(title="Last 5 kills", color=discord.Color.red())
-    for e in data:
+    # Build an embed “card”
+    embed = discord.Embed(title="🗡️ Last 5 Kills", color=discord.Color.red())
+    for e in data[-5:]:
         embed.add_field(
             name=f"{e['player']} ➔ {e['victim']}",
             value=f"{e['time']} • {e['zone']} • {e['weapon']}",
