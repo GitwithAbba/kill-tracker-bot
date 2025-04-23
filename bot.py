@@ -241,12 +241,14 @@ async def kills(interaction: discord.Interaction):
     if not data:
         return await interaction.followup.send("📭 No kills recorded yet.")
 
-    lines = [
-        f"**{e['id']}** • {e['player']} ➔ {e['victim']} • {e['time']} "
-        f"({e['zone']}, {e['weapon']})"
-        for e in data[-5:]
-    ]
-    await interaction.followup.send("\n".join(lines))
+    embed = discord.Embed(title="Recent Kills", color=discord.Color.red())
+    for e in data:
+        embed.add_field(
+            name=f"{e['player']} ➔ {e['victim']}",
+            value=f"{e['time']} • {e['zone']} • {e['weapon']}",
+            inline=False,
+        )
+    await interaction.followup.send(embed=embed)
 
 
 # Keep track of the highest kill ID we've posted so far
