@@ -279,16 +279,11 @@ async def fetch_and_post_kills():
         killer_profile = f"https://robertsspaceindustries.com/citizens/{kill['player']}"
         victim_profile = f"https://robertsspaceindustries.com/citizens/{kill['victim']}"
 
-        # pick avatar (remote or local)
-        raw = kill.get("avatar_url") or ""
-        if raw.startswith("http"):
-            thumb = raw
-            file_to_attach = None
-        else:
-            thumb = "attachment://3R_Transparent.png"
-            file_to_attach = discord.File(
-                "3R_Transparent.png", filename="3R_Transparent.png"
-            )
+        # always attach your PNG as thumbnail
+        file_to_attach = discord.File(
+            "3R_Transparent.png", filename="3R_Transparent.png"
+        )
+        thumb = "attachment://3R_Transparent.png"
 
         embed = discord.Embed(
             title="RRR Kill",
@@ -344,7 +339,9 @@ async def fetch_and_post_deaths():
     global last_death_id
     async with httpx.AsyncClient() as client:
         resp = await client.get(
-            f"{API_BASE}/deaths", headers={"Authorization": f"Bearer {API_KEY}"}
+            f"{API_BASE}/deaths",
+            headers={"Authorization": f"Bearer {API_KEY}"},
+            timeout=10.0,
         )
         resp.raise_for_status()
         deaths = resp.json()
@@ -353,7 +350,12 @@ async def fetch_and_post_deaths():
         if death["time"] <= last_death_id:
             continue
 
-        # feed selection
+        # always attach your PNG as thumbnail
+        file_to_attach = discord.File(
+            "3R_Transparent.png", filename="3R_Transparent.png"
+        )
+        thumb = "attachment://3R_Transparent.png"
+
         feed_id = (
             PU_KILL_FEED_ID if "pu" in death["game_mode"].lower() else AC_KILL_FEED_ID
         )
@@ -361,34 +363,24 @@ async def fetch_and_post_deaths():
         if not channel:
             continue
 
-        killer_url = death.get("rsi_profile")
-        victim_profile = (
-            f"https://robertsspaceindustries.com/citizens/{death['victim']}"
-        )
-
-        # pick avatar
-        raw = death.get("avatar_url") or ""
-        if raw.startswith("http"):
-            thumb = raw
-            file_to_attach = None
-        else:
-            thumb = "attachment://3R_Transparent.png"
-            file_to_attach = discord.File(
-                "3R_Transparent.png", filename="3R_Transparent.png"
-            )
-
         embed = discord.Embed(
             title="💀 You Died",
             color=discord.Color.dark_gray(),
             timestamp=discord.utils.parse_time(death["time"]),
         )
 
-        # Killer link
+        # Killer
+        killer_profile = death.get("rsi_profile")
         embed.add_field(
-            name="Killer", value=f"[{death['killer']}]({killer_url})", inline=False
+            name="Killer",
+            value=f"[{death['killer']}]({killer_profile})",
+            inline=False,
         )
 
-        # core fields
+        # Victim (you) & core fields
+        victim_profile = (
+            f"https://robertsspaceindustries.com/citizens/{death['victim']}"
+        )
         embed.add_field(
             name="Victim (You)",
             value=f"[{death['victim']}]({victim_profile})",
@@ -400,30 +392,22 @@ async def fetch_and_post_deaths():
         embed.add_field(name="Mode", value=death["game_mode"], inline=True)
         embed.add_field(name="Killer’s Ship", value=death["killers_ship"], inline=True)
 
-        # Killer’s organization (pulled from death.organization_*)
+        # Killer’s Organization
         org_name = death.get("organization_name") or "Unknown"
         org_url = death.get("organization_url")
         if org_url:
             embed.add_field(
-                name="Killer's Organization",
+                name="Killer’s Organization",
                 value=f"[{org_name}]({org_url})",
                 inline=False,
             )
         else:
-            embed.add_field(
-                name="Killer's Organization",
-                value=org_name,
-                inline=False,
-            )
+            embed.add_field(name="Killer’s Organization", value=org_name, inline=False)
 
-        # thumbnail
+        # thumbnail = your PNG
         embed.set_thumbnail(url=thumb)
 
-        if file_to_attach:
-            await channel.send(embed=embed, file=file_to_attach)
-        else:
-            await channel.send(embed=embed)
-
+        await channel.send(embed=embed, file=file_to_attach)
         last_death_id = death["time"]
 
 
