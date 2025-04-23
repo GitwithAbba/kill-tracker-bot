@@ -227,10 +227,9 @@ async def kills(interaction: discord.Interaction):
     headers = {"Authorization": f"Bearer {API_KEY}"}
     try:
         async with httpx.AsyncClient() as client:
-            resp = await client.get(
-                f"{API_BASE}/kills", headers={"Authorization": f"Bearer {API_KEY}"}
-            )
-        data = resp.json()[-10:]
+            resp = await client.get(f"{API_BASE}/kills", headers=headers, timeout=10.0)
+        resp.raise_for_status()
+        data = resp.json()
     except httpx.HTTPStatusError:
         body = resp.text
         return await interaction.followup.send(
@@ -241,8 +240,9 @@ async def kills(interaction: discord.Interaction):
 
     if not data:
         return await interaction.followup.send("📭 No kills recorded yet.")
+
+    embed = discord.Embed(title="Last 5 kills", color=discord.Color.red())
     for e in data:
-        embed = discord.Embed(title="Recent Kills", color=discord.Color.red())
         embed.add_field(
             name=f"{e['player']} ➔ {e['victim']}",
             value=f"{e['time']} • {e['zone']} • {e['weapon']}",
