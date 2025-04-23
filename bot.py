@@ -1,5 +1,5 @@
 import os
-import datetime
+import datetime as dt
 import logging
 import asyncio
 from discord.ext import tasks
@@ -313,21 +313,26 @@ async def topkills(
     await interaction.response.defer()
     headers = {"Authorization": f"Bearer {API_KEY}"}
     async with httpx.AsyncClient() as client:
-        resp = await client.get(f"{API_BASE}/kills", headers=headers)
+        resp = await client.get(
+            f"{API_BASE}/kills",
+            headers=headers,
+            timeout=10.0,
+        )
         resp.raise_for_status()
         data = resp.json()
 
     # time filtering
     def in_period(ts: str) -> bool:
-        dt = datetime.datetime.fromisoformat(ts)
-        now = datetime.datetime.utcnow()
+        # strip trailing "Z" if present, then parse
+        dt_obj = datetime.fromisoformat(ts.rstrip("Z"))
+        now = datetime.utcnow()
         if period == "today":
-            return dt.date() == now.date()
+            return dt_obj.date() == now.date()
         if period == "week":
-            return (now - dt).days < 7
+            return (now - dt_obj).days < 7
         if period == "month":
-            return now.year == dt.year and now.month == dt.month
-        return True  # all
+            return now.year == dt_obj.year and now.month == dt_obj.month
+        return True  # all time
 
     # aggregate
     stats: dict[str, int] = {}
@@ -335,13 +340,13 @@ async def topkills(
         if k["mode"] == mode and in_period(k["time"]):
             stats[k["player"]] = stats.get(k["player"], 0) + 1
 
-    top = sorted(stats.items(), key=lambda x: x[1], reverse=True)[:limit]
+    top_list = sorted(stats.items(), key=lambda x: x[1], reverse=True)[:limit]
 
     embed = discord.Embed(
-        title=f"🏆 Top {limit} Kills ({mode} / {period})",
+        title=f"🏆 Top {limit} Kills ({mode.upper()} / {period.capitalize()})",
         color=discord.Color.gold(),
     )
-    for idx, (player, cnt) in enumerate(top, start=1):
+    for idx, (player, cnt) in enumerate(top_list, start=1):
         embed.add_field(name=f"{idx}. {player}", value=f"{cnt} kills", inline=False)
 
     await interaction.followup.send(embed=embed)
@@ -373,43 +378,41 @@ async def topdeaths(
     limit: int = 10,
 ):
     await interaction.response.defer()
-    # 1) Fetch all death events
+    headers = {"Authorization": f"Bearer {API_KEY}"}
     async with httpx.AsyncClient() as client:
         resp = await client.get(
             f"{API_BASE}/deaths",
-            headers={"Authorization": f"Bearer {API_KEY}"},
+            headers=headers,
             timeout=10.0,
         )
         resp.raise_for_status()
         deaths = resp.json()
 
-    # 2) Filter helper
+    # filter helper
     def in_period(ts: str) -> bool:
-        dt = datetime.datetime.fromisoformat(ts.rstrip("Z"))
-        now = datetime.datetime.utcnow()
+        dt_obj = datetime.fromisoformat(ts.rstrip("Z"))
+        now = datetime.utcnow()
         if period == "today":
-            return dt.date() == now.date()
+            return dt_obj.date() == now.date()
         if period == "week":
-            return (now - dt).days < 7
+            return (now - dt_obj).days < 7
         if period == "month":
-            return now.year == dt.year and now.month == dt.month
+            return now.year == dt_obj.year and now.month == dt_obj.month
         return True  # all time
 
-    # 3) Tally deaths per victim
+    # tally
     counts: dict[str, int] = {}
     for d in deaths:
         if in_period(d["time"]):
             counts[d["victim"]] = counts.get(d["victim"], 0) + 1
 
-    # 4) Take top N
-    top_n = sorted(counts.items(), key=lambda x: x[1], reverse=True)[:limit]
+    top_list = sorted(counts.items(), key=lambda x: x[1], reverse=True)[:limit]
 
-    # 5) Build and send embed
     embed = discord.Embed(
         title=f"💀 Top {limit} Most-Died Players ({period.capitalize()})",
         color=discord.Color.dark_gray(),
     )
-    for idx, (player, cnt) in enumerate(top_n, start=1):
+    for idx, (player, cnt) in enumerate(top_list, start=1):
         embed.add_field(name=f"{idx}. {player}", value=f"{cnt} deaths", inline=False)
 
     await interaction.followup.send(embed=embed)
