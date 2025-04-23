@@ -313,17 +313,11 @@ async def topkills(
     await interaction.response.defer()
     headers = {"Authorization": f"Bearer {API_KEY}"}
     async with httpx.AsyncClient() as client:
-        resp = await client.get(
-            f"{API_BASE}/kills",
-            headers=headers,
-            timeout=10.0,
-        )
+        resp = await client.get(f"{API_BASE}/kills", headers=headers, timeout=10.0)
         resp.raise_for_status()
         data = resp.json()
 
-    # time filtering
     def in_period(ts: str) -> bool:
-        # strip trailing "Z" if present, then parse
         dt_obj = datetime.fromisoformat(ts.rstrip("Z"))
         now = datetime.utcnow()
         if period == "today":
@@ -331,10 +325,9 @@ async def topkills(
         if period == "week":
             return (now - dt_obj).days < 7
         if period == "month":
-            return now.year == dt_obj.year and now.month == dt_obj.month
-        return True  # all time
+            return now.year == dt_obj.year and dt_obj.month == now.month
+        return True
 
-    # aggregate
     stats: dict[str, int] = {}
     for k in data:
         if k["mode"] == mode and in_period(k["time"]):
@@ -343,7 +336,7 @@ async def topkills(
     top_list = sorted(stats.items(), key=lambda x: x[1], reverse=True)[:limit]
 
     embed = discord.Embed(
-        title=f"🏆 Top {limit} Kills ({mode.upper()} / {period.capitalize()})",
+        title=f"🏆 Top {limit} Players by Kills ({mode.upper()} / {period.capitalize()})",
         color=discord.Color.gold(),
     )
     for idx, (player, cnt) in enumerate(top_list, start=1):
@@ -380,15 +373,10 @@ async def topdeaths(
     await interaction.response.defer()
     headers = {"Authorization": f"Bearer {API_KEY}"}
     async with httpx.AsyncClient() as client:
-        resp = await client.get(
-            f"{API_BASE}/deaths",
-            headers=headers,
-            timeout=10.0,
-        )
+        resp = await client.get(f"{API_BASE}/deaths", headers=headers, timeout=10.0)
         resp.raise_for_status()
         deaths = resp.json()
 
-    # filter helper
     def in_period(ts: str) -> bool:
         dt_obj = datetime.fromisoformat(ts.rstrip("Z"))
         now = datetime.utcnow()
@@ -397,10 +385,9 @@ async def topdeaths(
         if period == "week":
             return (now - dt_obj).days < 7
         if period == "month":
-            return now.year == dt_obj.year and now.month == dt_obj.month
-        return True  # all time
+            return now.year == dt_obj.year and dt_obj.month == dt_obj.month
+        return True
 
-    # tally
     counts: dict[str, int] = {}
     for d in deaths:
         if in_period(d["time"]):
@@ -409,7 +396,7 @@ async def topdeaths(
     top_list = sorted(counts.items(), key=lambda x: x[1], reverse=True)[:limit]
 
     embed = discord.Embed(
-        title=f"💀 Top {limit} Most-Died Players ({period.capitalize()})",
+        title=f"💀 Top {limit} Players by Deaths ({period.capitalize()})",
         color=discord.Color.dark_gray(),
     )
     for idx, (player, cnt) in enumerate(top_list, start=1):
