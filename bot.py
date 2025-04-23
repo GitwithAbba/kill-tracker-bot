@@ -402,15 +402,15 @@ async def fetch_and_post_deaths():
 
         # Victim organization
         org_name = death.get("organization_name") or "Unknown"
-        org_url = death.get("organization_url")
-        if org_url:
+        ##org_url = death.get("organization_url")
+        if killer_url:
             embed.add_field(
-                name="Victim Organization",
-                value=f"[{org_name}]({org_url})",
+                name="Killer's Organization",
+                value=f"[{org_name}]({killer_url})",
                 inline=False,
             )
         else:
-            embed.add_field(name="Victim Organization", value=org_name, inline=False)
+            embed.add_field(name="Killer's Organization", value=org_name, inline=False)
 
         # thumbnail
         embed.set_thumbnail(url=thumb)
