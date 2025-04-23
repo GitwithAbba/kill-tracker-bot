@@ -227,9 +227,10 @@ async def kills(interaction: discord.Interaction):
     headers = {"Authorization": f"Bearer {API_KEY}"}
     try:
         async with httpx.AsyncClient() as client:
-            resp = await client.get(f"{API_BASE}/kills", headers=headers, timeout=10.0)
-        resp.raise_for_status()
-        data = resp.json()
+            resp = await client.get(
+                f"{API_BASE}/kills", headers={"Authorization": f"Bearer {API_KEY}"}
+            )
+        data = resp.json()[-10:]
     except httpx.HTTPStatusError:
         body = resp.text
         return await interaction.followup.send(
