@@ -78,6 +78,13 @@ class GenerateKeyView(discord.ui.View):
             )
 
 
+# TEST BELOW
+@bot.tree.command(name="testdaily", description="Manually send the daily summary embed")
+async def testdaily(interaction: discord.Interaction):
+    embed = await _build_summary_embed("daily", "📅")
+    await interaction.response.send_message(embed=embed)
+
+
 # ─── Scheduled Cards (Leaderboards) ──────────────────────────────────────────────
 
 # Channel for all summary cards
@@ -238,7 +245,7 @@ async def _build_summary_embed(period: str, emoji: str) -> discord.Embed:
 
 
 # ─── Daily @ 06:00 UTC (→ 21:00 EST) ─────────────────────────────────────────────
-@tasks.loop(time=dt.time(hour=2, minute=40, tzinfo=dt.timezone.utc))
+@tasks.loop(time=dt.time(hour=3, minute=0, tzinfo=dt.timezone.utc))
 async def daily_summary():
     embed = await _build_summary_embed("daily", "📅")
     chan = bot.get_channel(STAR_CITIZEN_FEED_ID)
