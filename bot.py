@@ -234,7 +234,7 @@ async def _build_summary_embed(period: str, emoji: str) -> discord.Embed:
 
 
 # ─── Daily @ 03:00 UTC (→ 22:00 EST) ─────────────────────────────────────────────
-@tasks.loop(time=dt.time(hour=3, minute=0, tzinfo=dt.timezone.utc))
+@tasks.loop(time=dt.time(hour=2, minute=5, tzinfo=dt.timezone.utc))
 async def daily_summary():
     embed = await _build_summary_embed("daily", "📅")
     chan = bot.get_channel(STAR_CITIZEN_FEED_ID)
