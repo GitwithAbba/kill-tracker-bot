@@ -233,8 +233,8 @@ async def _build_summary_embed(period: str, emoji: str) -> discord.Embed:
     return embed
 
 
-# ─── Daily @ 03:00 UTC (→ 22:00 EST) ─────────────────────────────────────────────
-@tasks.loop(time=dt.time(hour=2, minute=5, tzinfo=dt.timezone.utc))
+# ─── Daily 9PM EST @ 01:00 UTC ─────────────────────────────────────────────
+@tasks.loop(time=dt.time(hour=1, minute=0, tzinfo=dt.timezone.utc))
 async def daily_summary():
     embed = await _build_summary_embed("daily", "📅")
     chan = bot.get_channel(STAR_CITIZEN_FEED_ID)
@@ -242,8 +242,8 @@ async def daily_summary():
         await chan.send(embed=embed)
 
 
-# ─── Weekly @ Mondays @ 03:00 UTC ────────────────────────────────────────────────
-@tasks.loop(time=dt.time(hour=3, minute=0, tzinfo=dt.timezone.utc))
+# ─── Weekly @ Mondays 9PM EST @ 01:00 UTC ────────────────────────────────────────────────
+@tasks.loop(time=dt.time(hour=1, minute=0, tzinfo=dt.timezone.utc))
 async def weekly_summary():
     if datetime.utcnow().weekday() != 0:  # only Mondays
         return
@@ -253,8 +253,8 @@ async def weekly_summary():
         await chan.send(embed=embed)
 
 
-# ─── Monthly @ 1st of Month @ 03:00 UTC ─────────────────────────────────────────
-@tasks.loop(time=dt.time(hour=3, minute=0, tzinfo=dt.timezone.utc))
+# ─── Monthly @ 1st of Month 9PM EST @ 01:00 UTC ─────────────────────────────────────────
+@tasks.loop(time=dt.time(hour=1, minute=0, tzinfo=dt.timezone.utc))
 async def monthly_summary():
     if datetime.utcnow().day != 1:
         return
@@ -264,8 +264,8 @@ async def monthly_summary():
         await chan.send(embed=embed)
 
 
-# ─── Quarterly @ 1st of Qtr @ 03:00 UTC ─────────────────────────────────────────
-@tasks.loop(time=dt.time(hour=3, minute=0, tzinfo=dt.timezone.utc))
+# ─── Quarterly @ 1st of Qtr 9PM EST @ 01:00 UTC ─────────────────────────────────────────
+@tasks.loop(time=dt.time(hour=1, minute=0, tzinfo=dt.timezone.utc))
 async def quarterly_summary():
     now = datetime.utcnow()
     if now.month not in (1, 4, 7, 10) or now.day != 1:
@@ -276,8 +276,8 @@ async def quarterly_summary():
         await chan.send(embed=embed)
 
 
-# ─── Yearly @ Jan 1 @ 03:00 UTC ──────────────────────────────────────────────────
-@tasks.loop(time=dt.time(hour=3, minute=0, tzinfo=dt.timezone.utc))
+# ─── Yearly @ Jan 1 9PM EST @ 01:00 UTC ──────────────────────────────────────────────────
+@tasks.loop(time=dt.time(hour=1, minute=0, tzinfo=dt.timezone.utc))
 async def yearly_summary():
     now = datetime.utcnow()
     if not (now.month == 1 and now.day == 1):
@@ -286,6 +286,9 @@ async def yearly_summary():
     chan = bot.get_channel(STAR_CITIZEN_FEED_ID)
     if chan:
         await chan.send(embed=embed)
+
+
+# ─── api key generator ──────────────────────────────────────────────────
 
 
 @bot.event
