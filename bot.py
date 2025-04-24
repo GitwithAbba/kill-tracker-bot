@@ -253,37 +253,136 @@ async def kills(interaction: discord.Interaction):
 
 
 # ─── /topkd ──────────────────────────────────────────────────────────────────────
+@bot.tree.command(
+    name="topkd", description="Show the top 10 players by K/D ratio over a given period"
+)
+@app_commands.describe(
+    period="today, week, month, or all time",
+)
+@app_commands.choices(
+    period=[
+        app_commands.Choice(name="Today", value="today"),
+        app_commands.Choice(name="This Week", value="week"),
+        app_commands.Choice(name="This Month", value="month"),
+        app_commands.Choice(name="All Time", value="all"),
+    ],
+)
+async def topkd(
+    interaction: discord.Interaction,
+    period: str,
+):
+    await interaction.response.defer()
+    headers = {"Authorization": f"Bearer {API_KEY}"}
+
+    # fetch both endpoints
+    async with httpx.AsyncClient() as client:
+        r_k = await client.get(f"{API_BASE}/kills", headers=headers, timeout=10.0)
+        r_d = await client.get(f"{API_BASE}/deaths", headers=headers, timeout=10.0)
+        r_k.raise_for_status()
+        r_d.raise_for_status()
+        kills = r_k.json()
+        deaths = r_d.json()
+
+    def in_period(ts: str) -> bool:
+        dt_obj = datetime.fromisoformat(ts.rstrip("Z"))
+        now = datetime.utcnow()
+        if period == "today":
+            return dt_obj.date() == now.date()
+        if period == "week":
+            return (now - dt_obj).days < 7
+        if period == "month":
+            return now.year == dt_obj.year and dt_obj.month == now.month
+        return True
+
+    # tally per player
+    stats: dict[str, dict[str, int]] = {}
+    for k in kills:
+        if in_period(k["time"]):
+            stats.setdefault(k["player"], {"kills": 0, "deaths": 0})["kills"] += 1
+    for d in deaths:
+        if in_period(d["time"]):
+            stats.setdefault(d["victim"], {"kills": 0, "deaths": 0})["deaths"] += 1
+
+    ratios = [
+        (p, v["kills"], v["deaths"], v["kills"] / max(1, v["deaths"]))
+        for p, v in stats.items()
+    ]
+    top_list = sorted(ratios, key=lambda x: x[3], reverse=True)[:10]
+
+    embed = discord.Embed(
+        title=f"⚖️ Top 10 K/D ({period.capitalize()})",
+        color=discord.Color.blurple(),
+    )
+    for idx, (player, kc, dc, ratio) in enumerate(top_list, start=1):
+        embed.add_field(
+            name=f"{idx}. {player}", value=f"{kc}K / {dc}D → {ratio:.2f}", inline=False
+        )
+
+    await interaction.followup.send(embed=embed)
 
 
 # ─── /kd ──────────────────────────────────────────────────────────────────────
-@bot.tree.command(name="kd", description="Show your overall K/D (or someone else’s)")
-@app_commands.describe(user="RSI handle (defaults to you)")
-async def kd(interaction: discord.Interaction, user: str | None = None):
+@bot.tree.command(
+    name="kd", description="Show your K/D (or someone else’s) over a given period"
+)
+@app_commands.describe(
+    user="RSI handle (defaults to you)",
+    period="today, week, month, or all time",
+)
+@app_commands.choices(
+    period=[
+        app_commands.Choice(name="Today", value="today"),
+        app_commands.Choice(name="This Week", value="week"),
+        app_commands.Choice(name="This Month", value="month"),
+        app_commands.Choice(name="All Time", value="all"),
+    ],
+)
+async def kd(
+    interaction: discord.Interaction,
+    user: str | None = None,
+    period: str = "all",
+):
     await interaction.response.defer()
-    target = user or interaction.user.name  # fall back to Discord username if you like
+    target = user or interaction.user.name
     headers = {"Authorization": f"Bearer {API_KEY}"}
 
+    # fetch events
     async with httpx.AsyncClient() as client:
-        # fetch all kills
-        resp_k = await client.get(f"{API_BASE}/kills", headers=headers)
-        resp_k.raise_for_status()
-        kills = resp_k.json()
-        # fetch all deaths
-        resp_d = await client.get(f"{API_BASE}/deaths", headers=headers)
-        resp_d.raise_for_status()
-        deaths = resp_d.json()
+        r_k = await client.get(f"{API_BASE}/kills", headers=headers, timeout=10.0)
+        r_d = await client.get(f"{API_BASE}/deaths", headers=headers, timeout=10.0)
+        r_k.raise_for_status()
+        r_d.raise_for_status()
+        kills = r_k.json()
+        deaths = r_d.json()
 
-    total_kills = sum(1 for k in kills if k["player"] == target)
-    total_deaths = sum(1 for d in deaths if d["victim"] == target)
-    kd_ratio = total_kills / max(1, total_deaths)
+    # helper to filter by period
+    def in_period(ts: str) -> bool:
+        dt_obj = datetime.fromisoformat(ts.rstrip("Z"))
+        now = datetime.utcnow()
+        if period == "today":
+            return dt_obj.date() == now.date()
+        if period == "week":
+            return (now - dt_obj).days < 7
+        if period == "month":
+            return now.year == dt_obj.year and dt_obj.month == now.month
+        return True
+
+    # count
+    total_kills = sum(
+        1 for k in kills if k["player"] == target and in_period(k["time"])
+    )
+    total_deaths = sum(
+        1 for d in deaths if d["victim"] == target and in_period(d["time"])
+    )
+    ratio = total_kills / max(1, total_deaths)
 
     embed = discord.Embed(
-        title=f"K/D for {target}",
+        title=f"K/D for {target} ({period.capitalize()})",
         color=discord.Color.blurple(),
     )
     embed.add_field(name="Kills", value=str(total_kills), inline=True)
     embed.add_field(name="Deaths", value=str(total_deaths), inline=True)
-    embed.add_field(name="Ratio", value=f"{kd_ratio:.2f}", inline=True)
+    embed.add_field(name="Ratio", value=f"{ratio:.2f}", inline=True)
 
     await interaction.followup.send(embed=embed)
 
@@ -346,6 +445,64 @@ async def topkills(
 
 
 # ─── /toporgs ──────────────────────────────────────────────────────────────────────
+@bot.tree.command(
+    name="toporgdeaths",
+    description="Show the top 10 organizations by how often they were killed",
+)
+@app_commands.describe(
+    period="today, week, month, or all time",
+)
+@app_commands.choices(
+    period=[
+        app_commands.Choice(name="Today", value="today"),
+        app_commands.Choice(name="This Week", value="week"),
+        app_commands.Choice(name="This Month", value="month"),
+        app_commands.Choice(name="All Time", value="all"),
+    ],
+)
+async def toporgdeaths(
+    interaction: discord.Interaction,
+    period: str,
+):
+    await interaction.response.defer()
+    headers = {"Authorization": f"Bearer {API_KEY}"}
+
+    # 1) Fetch all kills
+    async with httpx.AsyncClient() as client:
+        resp = await client.get(f"{API_BASE}/kills", headers=headers, timeout=10.0)
+        resp.raise_for_status()
+        kills = resp.json()
+
+    # 2) Period filter
+    def in_period(ts: str) -> bool:
+        dt_obj = datetime.fromisoformat(ts.rstrip("Z"))
+        now = datetime.utcnow()
+        if period == "today":
+            return dt_obj.date() == now.date()
+        if period == "week":
+            return (now - dt_obj).days < 7
+        if period == "month":
+            return now.year == dt_obj.year and dt_obj.month == now.month
+        return True  # all time
+
+    # 3) Tally per victim organization
+    counts: dict[str, int] = {}
+    for k in kills:
+        org = k.get("organization_name") or "Unknown"
+        if in_period(k["time"]):
+            counts[org] = counts.get(org, 0) + 1
+
+    top_list = sorted(counts.items(), key=lambda x: x[1], reverse=True)[:10]
+
+    # 4) Build embed
+    embed = discord.Embed(
+        title=f"🏢 Top 10 Organizations by Times Killed ({period.capitalize()})",
+        color=discord.Color.dark_gray(),
+    )
+    for idx, (org, cnt) in enumerate(top_list, start=1):
+        embed.add_field(name=f"{idx}. {org}", value=f"{cnt} kills", inline=False)
+
+    await interaction.followup.send(embed=embed)
 
 
 # ─── /topdeaths ───────────────────────────────────────────────────────────────
@@ -411,6 +568,9 @@ def _date_range(period: str):
     if period == "daily":
         start = datetime.combine(today, datetime.min.time())
         end = start + timedelta(days=1)
+    elif period == "weekly":
+        start = datetime.combine(today, datetime.min.time())
+        end = start + timedelta(days=7)
     elif period == "monthly":
         start = datetime.combine(today.replace(day=1), datetime.min.time())
         # naive next-month: add 32 days then set day=1
