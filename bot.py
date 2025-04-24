@@ -85,7 +85,7 @@ STAR_CITIZEN_FEED_ID = int(os.getenv("STAR_CITIZEN_FEED"))
 
 
 # Daily
-@tasks.loop(time=dt.time(hour=0, minute=0, tzinfo=dt.timezone.utc))
+@tasks.loop(time=dt.time(hour=6, minute=0, tzinfo=dt.timezone.utc))
 async def daily_summary():
     async with httpx.AsyncClient() as client:
         resp = await client.get(
@@ -111,7 +111,7 @@ async def daily_summary():
 
 
 # Weekly
-@tasks.loop(time=dt.time(hour=0, minute=0, tzinfo=dt.timezone.utc))
+@tasks.loop(time=dt.time(hour=6, minute=0, tzinfo=dt.timezone.utc))
 async def weekly_summary():
     # only run on Mondays (weekday()==0)
     if datetime.utcnow().weekday() != 0:
@@ -141,7 +141,7 @@ async def weekly_summary():
 
 
 # Monthly
-@tasks.loop(time=dt.time(hour=0, minute=0, tzinfo=dt.timezone.utc))
+@tasks.loop(time=dt.time(hour=6, minute=0, tzinfo=dt.timezone.utc))
 async def monthly_summary():
     # only run on the first of each month
     if datetime.utcnow().day != 1:
@@ -171,7 +171,7 @@ async def monthly_summary():
 
 
 # Quarterly
-@tasks.loop(time=dt.time(hour=0, minute=0, tzinfo=dt.timezone.utc))
+@tasks.loop(time=dt.time(hour=6, minute=0, tzinfo=dt.timezone.utc))
 async def quarterly_summary():
     # only run on the first day of Jan/Apr/Jul/Oct
     m = datetime.utcnow().month
@@ -202,7 +202,7 @@ async def quarterly_summary():
 
 
 # Yearly
-@tasks.loop(time=dt.time(hour=0, minute=0, tzinfo=dt.timezone.utc))
+@tasks.loop(time=dt.time(hour=6, minute=0, tzinfo=dt.timezone.utc))
 async def yearly_summary():
     # only run on Jan 1st
     now = datetime.utcnow()
@@ -280,6 +280,18 @@ async def on_ready():
     # **start your death loop** right here
     if not fetch_and_post_deaths.is_running():
         fetch_and_post_deaths.start()
+
+    # ─── Start summary-card loops ───────────────────────────────────────────────
+    if not daily_summary.is_running():
+        daily_summary.start()
+    if not weekly_summary.is_running():
+        weekly_summary.start()
+    if not monthly_summary.is_running():
+        monthly_summary.start()
+    if not quarterly_summary.is_running():
+        quarterly_summary.start()
+    if not yearly_summary.is_running():
+        yearly_summary.start()
 
 
 # ─── /reportkill ─────────────────────────────────────────────────────────────────
