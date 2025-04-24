@@ -84,149 +84,209 @@ class GenerateKeyView(discord.ui.View):
 STAR_CITIZEN_FEED_ID = int(os.getenv("STAR_CITIZEN_FEED"))
 
 
-# Daily
+async def _fetch_events():
+    async with httpx.AsyncClient() as client:
+        r_k = await client.get(
+            f"{API_BASE}/kills",
+            headers={"Authorization": f"Bearer {API_KEY}"},
+            timeout=10.0,
+        )
+        r_d = await client.get(
+            f"{API_BASE}/deaths",
+            headers={"Authorization": f"Bearer {API_KEY}"},
+            timeout=10.0,
+        )
+        r_k.raise_for_status()
+        r_d.raise_for_status()
+        return r_k.json(), r_d.json()
+
+
+def _in_period(ts: str, period: str) -> bool:
+    dt_obj = datetime.fromisoformat(ts.rstrip("Z"))
+    now = datetime.utcnow()
+    if period == "daily":
+        return dt_obj.date() == now.date()
+    if period == "weekly":
+        return (now - dt_obj).days < 7
+    if period == "monthly":
+        return now.year == dt_obj.year and now.month == dt_obj.month
+    if period == "quarterly":
+        quarter = (now.month - 1) // 3
+        start = datetime(now.year, quarter * 3 + 1, 1)
+        nxt = (start + timedelta(days=92)).replace(day=1)
+        return start <= dt_obj < nxt
+    if period == "yearly":
+        return dt_obj.year == now.year
+    return False
+
+
+def _top_list(counts: dict, top_n: int = 5) -> list[tuple]:
+    return sorted(counts.items(), key=lambda x: x[1], reverse=True)[:top_n]
+
+
+async def _build_summary_embed(period: str, emoji: str) -> discord.Embed:
+    # 1) Totals from the /cards endpoint
+    async with httpx.AsyncClient() as client:
+        resp = await client.get(
+            f"{API_BASE}/cards/{period}",
+            headers={"Authorization": f"Bearer {API_KEY}"},
+            timeout=10.0,
+        )
+        resp.raise_for_status()
+        totals = resp.json()
+
+    # 2) Raw events
+    kills, deaths = await _fetch_events()
+
+    # 3) Filter for this period
+    kills_p = [k for k in kills if _in_period(k["time"], period)]
+    deaths_p = [d for d in deaths if _in_period(d["time"], period)]
+
+    # 4) Embed header
+    embed = discord.Embed(
+        title=f"{emoji} {period.capitalize()} Summary",
+        description=(
+            f"Kills: {totals['kills']}\n"
+            f"Deaths: {totals['deaths']}\n"
+            f"K/D: {totals['kd_ratio'] or 'N/A'}"
+        ),
+        color=discord.Color.blue(),
+    )
+
+    # 5) Top Players by Kills
+    kc: dict[str, int] = {}
+    for k in kills_p:
+        kc[k["player"]] = kc.get(k["player"], 0) + 1
+    kill_lines = (
+        "\n".join(
+            f"{i+1}. {p} — {c}K" for i, (p, c) in enumerate(_top_list(kc), start=1)
+        )
+        or "None"
+    )
+    embed.add_field(name="🏆 Top Players (Kills)", value=kill_lines, inline=False)
+
+    # 6) Top Players by Deaths
+    dc: dict[str, int] = {}
+    for d in deaths_p:
+        dc[d["victim"]] = dc.get(d["victim"], 0) + 1
+    death_lines = (
+        "\n".join(
+            f"{i+1}. {p} — {c}D" for i, (p, c) in enumerate(_top_list(dc), start=1)
+        )
+        or "None"
+    )
+    embed.add_field(name="💀 Top Players (Deaths)", value=death_lines, inline=False)
+
+    # 7) Top Players by K/D
+    stats: dict[str, dict[str, int]] = {}
+    for k in kills_p:
+        stats.setdefault(k["player"], {"kills": 0, "deaths": 0})["kills"] += 1
+    for d in deaths_p:
+        stats.setdefault(d["victim"], {"kills": 0, "deaths": 0})["deaths"] += 1
+    ratios = {p: v["kills"] / max(1, v["deaths"]) for p, v in stats.items()}
+    kd_lines = (
+        "\n".join(
+            f"{i+1}. {p} — {r:.2f}"
+            for i, (p, r) in enumerate(_top_list(ratios), start=1)
+        )
+        or "None"
+    )
+    embed.add_field(name="⚖️ Top Players (K/D)", value=kd_lines, inline=False)
+
+    # 8) Top Organizations by Kills
+    oc: dict[str, int] = {}
+    for k in kills_p:
+        org = k.get("organization_name") or "Unknown"
+        oc[org] = oc.get(org, 0) + 1
+    org_lines = (
+        "\n".join(
+            f"{i+1}. {o} — {c} kills" for i, (o, c) in enumerate(_top_list(oc), start=1)
+        )
+        or "None"
+    )
+    embed.add_field(name="🏢 Top Organizations", value=org_lines, inline=False)
+
+    # 9) Top Weapon
+    wc: dict[str, int] = {}
+    for k in kills_p:
+        wc[k["weapon"]] = wc.get(k["weapon"], 0) + 1
+    if wc:
+        weapon, wc_count = _top_list(wc, 1)[0]
+        embed.add_field(
+            name="🔫 Top Weapon", value=f"{weapon} ({wc_count} uses)", inline=True
+        )
+    else:
+        embed.add_field(name="🔫 Top Weapon", value="None", inline=True)
+
+    # 10) Hot Zone
+    zc: dict[str, int] = {}
+    for k in kills_p:
+        zc[k["zone"]] = zc.get(k["zone"], 0) + 1
+    if zc:
+        zone, zc_count = _top_list(zc, 1)[0]
+        embed.add_field(
+            name="📍 Hot Zone", value=f"{zone} ({zc_count} kills)", inline=True
+        )
+    else:
+        embed.add_field(name="📍 Hot Zone", value="None", inline=True)
+
+    # 11) Active Players
+    active = len({k["player"] for k in kills_p} | {d["victim"] for d in deaths_p})
+    embed.add_field(name="👥 Active Players", value=str(active), inline=False)
+
+    return embed
+
+
+# ─── Daily @ 06:00 UTC (→ 21:00 EST) ─────────────────────────────────────────────
 @tasks.loop(time=dt.time(hour=6, minute=0, tzinfo=dt.timezone.utc))
 async def daily_summary():
-    async with httpx.AsyncClient() as client:
-        resp = await client.get(
-            f"{API_BASE}/cards/daily",
-            headers={"Authorization": f"Bearer {API_KEY}"},
-            timeout=10.0,
-        )
-        resp.raise_for_status()
-        data = resp.json()
-
-    embed = discord.Embed(
-        title="📅 Daily Summary",
-        description=(
-            f"Kills: {data['kills']}\n"
-            f"Deaths: {data['deaths']}\n"
-            f"K/D: {data['kd_ratio'] or 'N/A'}"
-        ),
-        color=discord.Color.blue(),
-    )
+    embed = await _build_summary_embed("daily", "📅")
     chan = bot.get_channel(STAR_CITIZEN_FEED_ID)
     if chan:
         await chan.send(embed=embed)
 
 
-# Weekly
+# ─── Weekly @ Mondays @ 06:00 UTC ────────────────────────────────────────────────
 @tasks.loop(time=dt.time(hour=6, minute=0, tzinfo=dt.timezone.utc))
 async def weekly_summary():
-    # only run on Mondays (weekday()==0)
     if datetime.utcnow().weekday() != 0:
         return
-
-    async with httpx.AsyncClient() as client:
-        resp = await client.get(
-            f"{API_BASE}/cards/weekly",
-            headers={"Authorization": f"Bearer {API_KEY}"},
-            timeout=10.0,
-        )
-        resp.raise_for_status()
-        data = resp.json()
-
-    embed = discord.Embed(
-        title="🗓️ Weekly Summary",
-        description=(
-            f"Kills: {data['kills']}\n"
-            f"Deaths: {data['deaths']}\n"
-            f"K/D: {data['kd_ratio'] or 'N/A'}"
-        ),
-        color=discord.Color.blue(),
-    )
+    embed = await _build_summary_embed("weekly", "🗓️")
     chan = bot.get_channel(STAR_CITIZEN_FEED_ID)
     if chan:
         await chan.send(embed=embed)
 
 
-# Monthly
+# ─── Monthly @ 1st of Month @ 06:00 UTC ─────────────────────────────────────────
 @tasks.loop(time=dt.time(hour=6, minute=0, tzinfo=dt.timezone.utc))
 async def monthly_summary():
-    # only run on the first of each month
     if datetime.utcnow().day != 1:
         return
-
-    async with httpx.AsyncClient() as client:
-        resp = await client.get(
-            f"{API_BASE}/cards/monthly",
-            headers={"Authorization": f"Bearer {API_KEY}"},
-            timeout=10.0,
-        )
-        resp.raise_for_status()
-        data = resp.json()
-
-    embed = discord.Embed(
-        title="📆 Monthly Summary",
-        description=(
-            f"Kills: {data['kills']}\n"
-            f"Deaths: {data['deaths']}\n"
-            f"K/D: {data['kd_ratio'] or 'N/A'}"
-        ),
-        color=discord.Color.blue(),
-    )
+    embed = await _build_summary_embed("monthly", "📆")
     chan = bot.get_channel(STAR_CITIZEN_FEED_ID)
     if chan:
         await chan.send(embed=embed)
 
 
-# Quarterly
+# ─── Quarterly @ 1st of Qtr @ 06:00 UTC ─────────────────────────────────────────
 @tasks.loop(time=dt.time(hour=6, minute=0, tzinfo=dt.timezone.utc))
 async def quarterly_summary():
-    # only run on the first day of Jan/Apr/Jul/Oct
     m = datetime.utcnow().month
     if m not in (1, 4, 7, 10) or datetime.utcnow().day != 1:
         return
-
-    async with httpx.AsyncClient() as client:
-        resp = await client.get(
-            f"{API_BASE}/cards/quarterly",
-            headers={"Authorization": f"Bearer {API_KEY}"},
-            timeout=10.0,
-        )
-        resp.raise_for_status()
-        data = resp.json()
-
-    embed = discord.Embed(
-        title="📊 Quarterly Summary",
-        description=(
-            f"Kills: {data['kills']}\n"
-            f"Deaths: {data['deaths']}\n"
-            f"K/D: {data['kd_ratio'] or 'N/A'}"
-        ),
-        color=discord.Color.blue(),
-    )
+    embed = await _build_summary_embed("quarterly", "📊")
     chan = bot.get_channel(STAR_CITIZEN_FEED_ID)
     if chan:
         await chan.send(embed=embed)
 
 
-# Yearly
+# ─── Yearly @ Jan 1 @ 06:00 UTC ──────────────────────────────────────────────────
 @tasks.loop(time=dt.time(hour=6, minute=0, tzinfo=dt.timezone.utc))
 async def yearly_summary():
-    # only run on Jan 1st
     now = datetime.utcnow()
     if not (now.month == 1 and now.day == 1):
         return
-
-    async with httpx.AsyncClient() as client:
-        resp = await client.get(
-            f"{API_BASE}/cards/yearly",
-            headers={"Authorization": f"Bearer {API_KEY}"},
-            timeout=10.0,
-        )
-        resp.raise_for_status()
-        data = resp.json()
-
-    embed = discord.Embed(
-        title="🗓️ Yearly Summary",
-        description=(
-            f"Kills: {data['kills']}\n"
-            f"Deaths: {data['deaths']}\n"
-            f"K/D: {data['kd_ratio'] or 'N/A'}"
-        ),
-        color=discord.Color.blue(),
-    )
+    embed = await _build_summary_embed("yearly", "🗓️")
     chan = bot.get_channel(STAR_CITIZEN_FEED_ID)
     if chan:
         await chan.send(embed=embed)
