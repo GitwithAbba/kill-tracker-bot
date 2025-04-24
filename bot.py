@@ -78,6 +78,160 @@ class GenerateKeyView(discord.ui.View):
             )
 
 
+# ─── Scheduled Cards (Leaderboards) ──────────────────────────────────────────────
+
+# Channel for all summary cards
+STAR_CITIZEN_FEED_ID = int(os.getenv("STAR_CITIZEN_FEED"))
+
+
+# Daily
+@tasks.loop(time=dt.time(hour=0, minute=0, tzinfo=dt.timezone.utc))
+async def daily_summary():
+    async with httpx.AsyncClient() as client:
+        resp = await client.get(
+            f"{API_BASE}/cards/daily",
+            headers={"Authorization": f"Bearer {API_KEY}"},
+            timeout=10.0,
+        )
+        resp.raise_for_status()
+        data = resp.json()
+
+    embed = discord.Embed(
+        title="📅 Daily Summary",
+        description=(
+            f"Kills: {data['kills']}\n"
+            f"Deaths: {data['deaths']}\n"
+            f"K/D: {data['kd_ratio'] or 'N/A'}"
+        ),
+        color=discord.Color.blue(),
+    )
+    chan = bot.get_channel(STAR_CITIZEN_FEED_ID)
+    if chan:
+        await chan.send(embed=embed)
+
+
+# Weekly
+@tasks.loop(time=dt.time(hour=0, minute=0, tzinfo=dt.timezone.utc))
+async def weekly_summary():
+    # only run on Mondays (weekday()==0)
+    if datetime.utcnow().weekday() != 0:
+        return
+
+    async with httpx.AsyncClient() as client:
+        resp = await client.get(
+            f"{API_BASE}/cards/weekly",
+            headers={"Authorization": f"Bearer {API_KEY}"},
+            timeout=10.0,
+        )
+        resp.raise_for_status()
+        data = resp.json()
+
+    embed = discord.Embed(
+        title="🗓️ Weekly Summary",
+        description=(
+            f"Kills: {data['kills']}\n"
+            f"Deaths: {data['deaths']}\n"
+            f"K/D: {data['kd_ratio'] or 'N/A'}"
+        ),
+        color=discord.Color.blue(),
+    )
+    chan = bot.get_channel(STAR_CITIZEN_FEED_ID)
+    if chan:
+        await chan.send(embed=embed)
+
+
+# Monthly
+@tasks.loop(time=dt.time(hour=0, minute=0, tzinfo=dt.timezone.utc))
+async def monthly_summary():
+    # only run on the first of each month
+    if datetime.utcnow().day != 1:
+        return
+
+    async with httpx.AsyncClient() as client:
+        resp = await client.get(
+            f"{API_BASE}/cards/monthly",
+            headers={"Authorization": f"Bearer {API_KEY}"},
+            timeout=10.0,
+        )
+        resp.raise_for_status()
+        data = resp.json()
+
+    embed = discord.Embed(
+        title="📆 Monthly Summary",
+        description=(
+            f"Kills: {data['kills']}\n"
+            f"Deaths: {data['deaths']}\n"
+            f"K/D: {data['kd_ratio'] or 'N/A'}"
+        ),
+        color=discord.Color.blue(),
+    )
+    chan = bot.get_channel(STAR_CITIZEN_FEED_ID)
+    if chan:
+        await chan.send(embed=embed)
+
+
+# Quarterly
+@tasks.loop(time=dt.time(hour=0, minute=0, tzinfo=dt.timezone.utc))
+async def quarterly_summary():
+    # only run on the first day of Jan/Apr/Jul/Oct
+    m = datetime.utcnow().month
+    if m not in (1, 4, 7, 10) or datetime.utcnow().day != 1:
+        return
+
+    async with httpx.AsyncClient() as client:
+        resp = await client.get(
+            f"{API_BASE}/cards/quarterly",
+            headers={"Authorization": f"Bearer {API_KEY}"},
+            timeout=10.0,
+        )
+        resp.raise_for_status()
+        data = resp.json()
+
+    embed = discord.Embed(
+        title="📊 Quarterly Summary",
+        description=(
+            f"Kills: {data['kills']}\n"
+            f"Deaths: {data['deaths']}\n"
+            f"K/D: {data['kd_ratio'] or 'N/A'}"
+        ),
+        color=discord.Color.blue(),
+    )
+    chan = bot.get_channel(STAR_CITIZEN_FEED_ID)
+    if chan:
+        await chan.send(embed=embed)
+
+
+# Yearly
+@tasks.loop(time=dt.time(hour=0, minute=0, tzinfo=dt.timezone.utc))
+async def yearly_summary():
+    # only run on Jan 1st
+    now = datetime.utcnow()
+    if not (now.month == 1 and now.day == 1):
+        return
+
+    async with httpx.AsyncClient() as client:
+        resp = await client.get(
+            f"{API_BASE}/cards/yearly",
+            headers={"Authorization": f"Bearer {API_KEY}"},
+            timeout=10.0,
+        )
+        resp.raise_for_status()
+        data = resp.json()
+
+    embed = discord.Embed(
+        title="🗓️ Yearly Summary",
+        description=(
+            f"Kills: {data['kills']}\n"
+            f"Deaths: {data['deaths']}\n"
+            f"K/D: {data['kd_ratio'] or 'N/A'}"
+        ),
+        color=discord.Color.blue(),
+    )
+    chan = bot.get_channel(STAR_CITIZEN_FEED_ID)
+    if chan:
+        await chan.send(embed=embed)
+
+
 @bot.event
 async def on_ready():
     # register our persistent view
@@ -219,6 +373,191 @@ async def reportkill(
         embed.add_field(name="Ship", value="N/A", inline=True)
 
         await channel.send(embed=embed)
+
+
+# ─── /leaderboard ────────────────────────────────────────────────────────────────
+@bot.tree.command(
+    name="leaderboard",
+    description="Combined leaderboards (top kills, deaths, K/D) for a period",
+)
+@app_commands.describe(
+    period="today, week, month, or all time",
+)
+@app_commands.choices(
+    period=[
+        app_commands.Choice(name="Today", value="today"),
+        app_commands.Choice(name="This Week", value="week"),
+        app_commands.Choice(name="This Month", value="month"),
+        app_commands.Choice(name="All Time", value="all"),
+    ],
+)
+async def leaderboard(
+    interaction: discord.Interaction,
+    period: str,
+):
+    await interaction.response.defer()
+    headers = {"Authorization": f"Bearer {API_KEY}"}
+
+    # fetch both
+    async with httpx.AsyncClient() as client:
+        r_k = await client.get(f"{API_BASE}/kills", headers=headers, timeout=10.0)
+        r_d = await client.get(f"{API_BASE}/deaths", headers=headers, timeout=10.0)
+        r_k.raise_for_status()
+        r_d.raise_for_status()
+        kills = r_k.json()
+        deaths = r_d.json()
+
+    def in_period(ts: str) -> bool:
+        dt_obj = datetime.fromisoformat(ts.rstrip("Z"))
+        now = datetime.utcnow()
+        if period == "today":
+            return dt_obj.date() == now.date()
+        if period == "week":
+            return (now - dt_obj).days < 7
+        if period == "month":
+            return now.year == dt_obj.year and dt_obj.month == now.month
+        return True
+
+    # Top 5 kills
+    kill_counts: dict[str, int] = {}
+    for e in kills:
+        if in_period(e["time"]):
+            kill_counts[e["player"]] = kill_counts.get(e["player"], 0) + 1
+    top_k = sorted(kill_counts.items(), key=lambda x: x[1], reverse=True)[:5]
+    kill_lines = "\n".join(f"{i+1}. {p} — {c}K" for i, (p, c) in enumerate(top_k))
+
+    # Top 5 deaths
+    death_counts: dict[str, int] = {}
+    for e in deaths:
+        if in_period(e["time"]):
+            death_counts[e["victim"]] = death_counts.get(e["victim"], 0) + 1
+    top_d = sorted(death_counts.items(), key=lambda x: x[1], reverse=True)[:5]
+    death_lines = "\n".join(f"{i+1}. {p} — {c}D" for i, (p, c) in enumerate(top_d))
+
+    # Top 5 K/D
+    stats: dict[str, dict[str, int]] = {}
+    for e in kills:
+        if in_period(e["time"]):
+            stats.setdefault(e["player"], {"kills": 0, "deaths": 0})["kills"] += 1
+    for e in deaths:
+        if in_period(e["time"]):
+            stats.setdefault(e["victim"], {"kills": 0, "deaths": 0})["deaths"] += 1
+    ratios = [
+        (p, v["kills"], v["deaths"], v["kills"] / max(1, v["deaths"]))
+        for p, v in stats.items()
+    ]
+    top_ratio = sorted(ratios, key=lambda x: x[3], reverse=True)[:5]
+    kd_lines = "\n".join(
+        f"{i+1}. {p} — {ratio:.2f}" for i, (p, _, _, ratio) in enumerate(top_ratio)
+    )
+
+    embed = discord.Embed(
+        title=f"📊 Leaderboard ({period.capitalize()})",
+        color=discord.Color.purple(),
+    )
+    embed.add_field(name="🏆 Top Kills", value=kill_lines or "None", inline=False)
+    embed.add_field(name="💀 Top Deaths", value=death_lines or "None", inline=False)
+    embed.add_field(name="⚖️ Top K/D", value=kd_lines or "None", inline=False)
+
+    await interaction.followup.send(embed=embed)
+
+
+# ─── /stats ───────────────────────────────────────────────────────────────────────
+@bot.tree.command(
+    name="stats", description="Show detailed stats for yourself or someone else"
+)
+@app_commands.describe(
+    user="RSI handle (defaults to you)",
+)
+async def stats(
+    interaction: discord.Interaction,
+    user: str | None = None,
+):
+    await interaction.response.defer()
+    target = user or interaction.user.name
+    headers = {"Authorization": f"Bearer {API_KEY}"}
+
+    # fetch
+    async with httpx.AsyncClient() as client:
+        r_k = await client.get(f"{API_BASE}/kills", headers=headers, timeout=10.0)
+        r_d = await client.get(f"{API_BASE}/deaths", headers=headers, timeout=10.0)
+        r_k.raise_for_status()
+        r_d.raise_for_status()
+        kills = r_k.json()
+        deaths = r_d.json()
+
+    total_k = sum(1 for e in kills if e["player"] == target)
+    total_d = sum(1 for e in deaths if e["victim"] == target)
+    ratio = total_k / max(1, total_d)
+
+    # top 5 orgs they've killed
+    org_counts: dict[str, int] = {}
+    for e in kills:
+        if e["player"] == target:
+            org = e.get("organization_name") or "Unknown"
+            org_counts[org] = org_counts.get(org, 0) + 1
+    top_orgs = sorted(org_counts.items(), key=lambda x: x[1], reverse=True)[:5]
+    org_lines = "\n".join(f"{o}: {c}" for o, c in top_orgs) or "None"
+
+    embed = discord.Embed(
+        title=f"📈 Stats for {target}",
+        color=discord.Color.green(),
+    )
+    embed.add_field(name="Kills", value=str(total_k), inline=True)
+    embed.add_field(name="Deaths", value=str(total_d), inline=True)
+    embed.add_field(name="K/D", value=f"{ratio:.2f}", inline=True)
+    embed.add_field(name="Top Killed Orgs", value=org_lines, inline=False)
+
+    await interaction.followup.send(embed=embed)
+
+
+# ─── /compare ─────────────────────────────────────────────────────────────────────
+@bot.tree.command(name="compare", description="Compare stats for two RSI handles")
+@app_commands.describe(
+    user1="First RSI handle",
+    user2="Second RSI handle",
+)
+async def compare(
+    interaction: discord.Interaction,
+    user1: str,
+    user2: str,
+):
+    await interaction.response.defer()
+    headers = {"Authorization": f"Bearer {API_KEY}"}
+
+    # fetch
+    async with httpx.AsyncClient() as client:
+        r_k = await client.get(f"{API_BASE}/kills", headers=headers, timeout=10.0)
+        r_d = await client.get(f"{API_BASE}/deaths", headers=headers, timeout=10.0)
+        r_k.raise_for_status()
+        r_d.raise_for_status()
+        kills = r_k.json()
+        deaths = r_d.json()
+
+    def stats_for(u: str):
+        k = sum(1 for e in kills if e["player"] == u)
+        d = sum(1 for e in deaths if e["victim"] == u)
+        return k, d, k / max(1, d)
+
+    k1, d1, r1 = stats_for(user1)
+    k2, d2, r2 = stats_for(user2)
+
+    embed = discord.Embed(
+        title=f"🔍 Compare: {user1} vs {user2}",
+        color=discord.Color.purple(),
+    )
+    embed.add_field(
+        name=user1,
+        value=f"Kills: {k1}\nDeaths: {d1}\nK/D: {r1:.2f}",
+        inline=True,
+    )
+    embed.add_field(
+        name=user2,
+        value=f"Kills: {k2}\nDeaths: {d2}\nK/D: {r2:.2f}",
+        inline=True,
+    )
+
+    await interaction.followup.send(embed=embed)
 
 
 # ─── /kills ──────────────────────────────────────────────────────────────────────
@@ -560,39 +899,6 @@ async def topdeaths(
         embed.add_field(name=f"{idx}. {player}", value=f"{cnt} deaths", inline=False)
 
     await interaction.followup.send(embed=embed)
-
-
-# ─── Scheduled Cards (Leaderboards) ──────────────────────────────────────────────────────────────────────
-def _date_range(period: str):
-    today = date.today()
-    if period == "daily":
-        start = datetime.combine(today, datetime.min.time())
-        end = start + timedelta(days=1)
-    elif period == "weekly":
-        start = datetime.combine(today, datetime.min.time())
-        end = start + timedelta(days=7)
-    elif period == "monthly":
-        start = datetime.combine(today.replace(day=1), datetime.min.time())
-        # naive next-month: add 32 days then set day=1
-        nxt = (today.replace(day=1) + timedelta(days=32)).replace(day=1)
-        end = datetime.combine(nxt, datetime.min.time())
-    elif period == "quarterly":
-        q = (today.month - 1) // 3
-        start_month = q * 3 + 1
-        start = datetime.combine(
-            today.replace(month=start_month, day=1), datetime.min.time()
-        )
-        # end = start + 3 months
-        nxt = (start + timedelta(days=92)).replace(day=1)
-        end = datetime.combine(nxt, datetime.min.time())
-    elif period == "yearly":
-        start = datetime.combine(today.replace(month=1, day=1), datetime.min.time())
-        end = datetime.combine(
-            today.replace(year=today.year + 1, month=1, day=1), datetime.min.time()
-        )
-    else:
-        raise ValueError("unknown period")
-    return start, end
 
 
 # Keep track of the highest kill ID we've posted so far
