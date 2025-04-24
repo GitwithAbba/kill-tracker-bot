@@ -87,7 +87,6 @@ async def testdaily(interaction: discord.Interaction):
 
 # ─── Scheduled Cards (Leaderboards) ──────────────────────────────────────────────
 
-# Channel for all summary cards
 STAR_CITIZEN_FEED_ID = int(os.getenv("STAR_CITIZEN_FEED"))
 
 
@@ -118,10 +117,10 @@ def _in_period(ts: str, period: str) -> bool:
     if period == "monthly":
         return now.year == dt_obj.year and now.month == dt_obj.month
     if period == "quarterly":
-        quarter = (now.month - 1) // 3
-        start = datetime(now.year, quarter * 3 + 1, 1)
-        nxt = (start + timedelta(days=92)).replace(day=1)
-        return start <= dt_obj < nxt
+        q = (now.month - 1) // 3
+        start = datetime(now.year, q * 3 + 1, 1)
+        end = (start + timedelta(days=92)).replace(day=1)
+        return start <= dt_obj < end
     if period == "yearly":
         return dt_obj.year == now.year
     return False
@@ -132,119 +131,109 @@ def _top_list(counts: dict, top_n: int = 5) -> list[tuple]:
 
 
 async def _build_summary_embed(period: str, emoji: str) -> discord.Embed:
-    # 1) Totals from the /cards endpoint
-    async with httpx.AsyncClient() as client:
-        resp = await client.get(
-            f"{API_BASE}/cards/{period}",
-            headers={"Authorization": f"Bearer {API_KEY}"},
-            timeout=10.0,
-        )
-        resp.raise_for_status()
-        totals = resp.json()
-
-    # 2) Raw events
+    # 1) Fetch raw events
     kills, deaths = await _fetch_events()
-
-    # 3) Filter for this period
     kills_p = [k for k in kills if _in_period(k["time"], period)]
     deaths_p = [d for d in deaths if _in_period(d["time"], period)]
 
-    # 4) Embed header
+    # 2) Totals
+    total_kills = len(kills_p)
+    total_deaths = len(deaths_p)
+    kd_ratio = total_kills / total_deaths if total_deaths else None
+    kd_text = f"{kd_ratio:.2f}" if kd_ratio is not None else "N/A"
+
+    # 3) Header embed
     embed = discord.Embed(
         title=f"{emoji} {period.capitalize()} Summary",
         description=(
-            f"Kills: {totals['kills']}\n"
-            f"Deaths: {totals['deaths']}\n"
-            f"K/D: {totals['kd_ratio'] or 'N/A'}"
+            f"Kills: {total_kills}\n" f"Deaths: {total_deaths}\n" f"K/D: {kd_text}"
         ),
         color=discord.Color.blue(),
     )
 
-    # 5) Top Players by Kills
+    # 4) Top Players by Kills
     kc: dict[str, int] = {}
     for k in kills_p:
         kc[k["player"]] = kc.get(k["player"], 0) + 1
-    kill_lines = (
+    lines = (
         "\n".join(
             f"{i+1}. {p} — {c}K" for i, (p, c) in enumerate(_top_list(kc), start=1)
         )
         or "None"
     )
-    embed.add_field(name="🏆 Top Players (Kills)", value=kill_lines, inline=False)
+    embed.add_field(name="🏆 Top Players (Kills)", value=lines, inline=False)
 
-    # 6) Top Players by Deaths
+    # 5) Top Players by Deaths
     dc: dict[str, int] = {}
     for d in deaths_p:
         dc[d["victim"]] = dc.get(d["victim"], 0) + 1
-    death_lines = (
+    lines = (
         "\n".join(
             f"{i+1}. {p} — {c}D" for i, (p, c) in enumerate(_top_list(dc), start=1)
         )
         or "None"
     )
-    embed.add_field(name="💀 Top Players (Deaths)", value=death_lines, inline=False)
+    embed.add_field(name="💀 Top Players (Deaths)", value=lines, inline=False)
 
-    # 7) Top Players by K/D
+    # 6) Top Players by K/D
     stats: dict[str, dict[str, int]] = {}
     for k in kills_p:
         stats.setdefault(k["player"], {"kills": 0, "deaths": 0})["kills"] += 1
     for d in deaths_p:
         stats.setdefault(d["victim"], {"kills": 0, "deaths": 0})["deaths"] += 1
     ratios = {p: v["kills"] / max(1, v["deaths"]) for p, v in stats.items()}
-    kd_lines = (
+    lines = (
         "\n".join(
             f"{i+1}. {p} — {r:.2f}"
             for i, (p, r) in enumerate(_top_list(ratios), start=1)
         )
         or "None"
     )
-    embed.add_field(name="⚖️ Top Players (K/D)", value=kd_lines, inline=False)
+    embed.add_field(name="⚖️ Top Players (K/D)", value=lines, inline=False)
 
-    # 8) Top Organizations by Kills
+    # 7) Top Organizations by Kills
     oc: dict[str, int] = {}
     for k in kills_p:
         org = k.get("organization_name") or "Unknown"
         oc[org] = oc.get(org, 0) + 1
-    org_lines = (
+    lines = (
         "\n".join(
             f"{i+1}. {o} — {c} kills" for i, (o, c) in enumerate(_top_list(oc), start=1)
         )
         or "None"
     )
-    embed.add_field(name="🏢 Top Organizations", value=org_lines, inline=False)
+    embed.add_field(name="🏢 Top Organizations", value=lines, inline=False)
 
-    # 9) Top Weapon
+    # 8) Top Weapon
     wc: dict[str, int] = {}
     for k in kills_p:
         wc[k["weapon"]] = wc.get(k["weapon"], 0) + 1
     if wc:
-        weapon, wc_count = _top_list(wc, 1)[0]
+        weapon, cnt = _top_list(wc, 1)[0]
         embed.add_field(
-            name="🔫 Top Weapon", value=f"{weapon} ({wc_count} uses)", inline=True
+            name="🔫 Top Weapon", value=f"{weapon} ({cnt} uses)", inline=True
         )
     else:
         embed.add_field(name="🔫 Top Weapon", value="None", inline=True)
 
-    # 10) Hot Zone
+    # 9) Hot Zone
     zc: dict[str, int] = {}
     for k in kills_p:
         zc[k["zone"]] = zc.get(k["zone"], 0) + 1
     if zc:
-        zone, zc_count = _top_list(zc, 1)[0]
-        embed.add_field(
-            name="📍 Hot Zone", value=f"{zone} ({zc_count} kills)", inline=True
-        )
+        zone, cnt = _top_list(zc, 1)[0]
+        embed.add_field(name="📍 Hot Zone", value=f"{zone} ({cnt} kills)", inline=True)
     else:
         embed.add_field(name="📍 Hot Zone", value="None", inline=True)
 
-    # 11) Active Players
+    # 10) Active Players
     active = len({k["player"] for k in kills_p} | {d["victim"] for d in deaths_p})
     embed.add_field(name="👥 Active Players", value=str(active), inline=False)
 
     return embed
 
 
-# ─── Daily @ 06:00 UTC (→ 21:00 EST) ─────────────────────────────────────────────
+# ─── Daily @ 03:00 UTC (→ 22:00 EST) ─────────────────────────────────────────────
 @tasks.loop(time=dt.time(hour=3, minute=0, tzinfo=dt.timezone.utc))
 async def daily_summary():
     embed = await _build_summary_embed("daily", "📅")
@@ -253,10 +242,10 @@ async def daily_summary():
         await chan.send(embed=embed)
 
 
-# ─── Weekly @ Mondays @ 06:00 UTC ────────────────────────────────────────────────
-@tasks.loop(time=dt.time(hour=6, minute=0, tzinfo=dt.timezone.utc))
+# ─── Weekly @ Mondays @ 03:00 UTC ────────────────────────────────────────────────
+@tasks.loop(time=dt.time(hour=3, minute=0, tzinfo=dt.timezone.utc))
 async def weekly_summary():
-    if datetime.utcnow().weekday() != 0:
+    if datetime.utcnow().weekday() != 0:  # only Mondays
         return
     embed = await _build_summary_embed("weekly", "🗓️")
     chan = bot.get_channel(STAR_CITIZEN_FEED_ID)
@@ -264,8 +253,8 @@ async def weekly_summary():
         await chan.send(embed=embed)
 
 
-# ─── Monthly @ 1st of Month @ 06:00 UTC ─────────────────────────────────────────
-@tasks.loop(time=dt.time(hour=6, minute=0, tzinfo=dt.timezone.utc))
+# ─── Monthly @ 1st of Month @ 03:00 UTC ─────────────────────────────────────────
+@tasks.loop(time=dt.time(hour=3, minute=0, tzinfo=dt.timezone.utc))
 async def monthly_summary():
     if datetime.utcnow().day != 1:
         return
@@ -275,11 +264,11 @@ async def monthly_summary():
         await chan.send(embed=embed)
 
 
-# ─── Quarterly @ 1st of Qtr @ 06:00 UTC ─────────────────────────────────────────
-@tasks.loop(time=dt.time(hour=6, minute=0, tzinfo=dt.timezone.utc))
+# ─── Quarterly @ 1st of Qtr @ 03:00 UTC ─────────────────────────────────────────
+@tasks.loop(time=dt.time(hour=3, minute=0, tzinfo=dt.timezone.utc))
 async def quarterly_summary():
-    m = datetime.utcnow().month
-    if m not in (1, 4, 7, 10) or datetime.utcnow().day != 1:
+    now = datetime.utcnow()
+    if now.month not in (1, 4, 7, 10) or now.day != 1:
         return
     embed = await _build_summary_embed("quarterly", "📊")
     chan = bot.get_channel(STAR_CITIZEN_FEED_ID)
@@ -287,8 +276,8 @@ async def quarterly_summary():
         await chan.send(embed=embed)
 
 
-# ─── Yearly @ Jan 1 @ 06:00 UTC ──────────────────────────────────────────────────
-@tasks.loop(time=dt.time(hour=6, minute=0, tzinfo=dt.timezone.utc))
+# ─── Yearly @ Jan 1 @ 03:00 UTC ──────────────────────────────────────────────────
+@tasks.loop(time=dt.time(hour=3, minute=0, tzinfo=dt.timezone.utc))
 async def yearly_summary():
     now = datetime.utcnow()
     if not (now.month == 1 and now.day == 1):
