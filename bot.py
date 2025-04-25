@@ -11,7 +11,8 @@ from dotenv import load_dotenv
 from discord import ui, ButtonStyle, Embed
 from discord.ui import View
 import traceback
-from datetime import datetime, date, timedelta
+from datetime import datetime, date, time, timedelta, timezone
+from zoneinfo import ZoneInfo
 
 # ─── Load & validate env ─────────────────────────────────────────────────────────
 load_dotenv()
@@ -31,6 +32,9 @@ if not TOKEN or not API_BASE or not API_KEY:
         "Ensure DISCORD_TOKEN, BACKEND_URL, and BACKEND_KEY are set."
     )
     raise SystemExit(1)
+
+# ─── Timezone setup ────────────────────────────────────────────────────────────────────
+EST = ZoneInfo("America/New_York")
 
 # ─── Bot setup ────────────────────────────────────────────────────────────────────
 intents = discord.Intents.default()
@@ -78,25 +82,28 @@ class GenerateKeyView(discord.ui.View):
             )
 
 
-# TEST BELOW
-@bot.tree.command(name="testdaily", description="Manually send the daily summary embed")
+# ─── TEST COMMANDS ─────────────────────────────────────────────────────────────
+
+
+@bot.tree.command(
+    name="testdaily",
+    description="Manually send the last 24 h (9 PM → 9 PM EST) summary",
+)
 async def testdaily(interaction: discord.Interaction):
-    # temporarily comment out the yesterday‐line:
-    # embed = await _build_summary_embed("daily", "📅")
-    # …or just call with today:
-    embed = await _build_summary_embed("today", "📅")
+    embed = await _build_summary_embed("daily", "📅")
     await interaction.response.send_message(embed=embed)
 
 
-# TEST TODAY
-@bot.tree.command(name="testtoday", description="Show today’s summary")
+@bot.tree.command(
+    name="testtoday",
+    description="Show today's EST‐calendar summary (midnight → midnight)",
+)
 async def testtoday(interaction: discord.Interaction):
     embed = await _build_summary_embed("today", "📅")
     await interaction.response.send_message(embed=embed)
 
 
 # ─── Scheduled Cards (Leaderboards) ──────────────────────────────────────────────
-
 STAR_CITIZEN_FEED_ID = int(os.getenv("STAR_CITIZEN_FEED"))
 
 
@@ -118,23 +125,36 @@ async def _fetch_events():
 
 
 def _in_period(ts: str, period: str) -> bool:
-    dt_obj = datetime.fromisoformat(ts.rstrip("Z"))
-    now = datetime.utcnow()
+    # parse UTC timestamp, convert to local NY time
+    dt_utc = datetime.fromisoformat(ts.rstrip("Z")).replace(tzinfo=timezone.utc)
+    dt_local = dt_utc.astimezone(EST)
+    now_local = datetime.now(EST)
+
+    if period == "today":
+        # calendar‐day midnight→midnight
+        return dt_local.date() == now_local.date()
+
     if period == "daily":
-        # pull in *all* events whose UTC‐date is yesterday
-        yesterday = (now - timedelta(days=1)).date()
-        return dt_obj.date() == yesterday
+        # 24 h slice: yesterday 9 PM → today 9 PM
+        end = now_local.replace(hour=21, minute=0, second=0, microsecond=0)
+        start = end - timedelta(days=1)
+        return start <= dt_local < end
+
     if period == "weekly":
-        return (now - dt_obj).days < 7
+        return (now_local - dt_local) < timedelta(days=7)
+
     if period == "monthly":
-        return now.year == dt_obj.year and now.month == dt_obj.month
+        return dt_local.year == now_local.year and dt_local.month == now_local.month
+
     if period == "quarterly":
-        q = (now.month - 1) // 3
-        start = datetime(now.year, q * 3 + 1, 1)
+        q = (now_local.month - 1) // 3
+        start = datetime(now_local.year, q * 3 + 1, 1, tzinfo=EST)
         end = (start + timedelta(days=92)).replace(day=1)
-        return start <= dt_obj < end
+        return start <= dt_local < end
+
     if period == "yearly":
-        return dt_obj.year == now.year
+        return dt_local.year == now_local.year
+
     return False
 
 
@@ -143,6 +163,7 @@ def _top_list(counts: dict, top_n: int = 5) -> list[tuple]:
 
 
 async def _build_summary_embed(period: str, emoji: str) -> discord.Embed:
+    # … your existing cool‐features embed code unchanged …
     # 1) Fetch raw events
     kills, deaths = await _fetch_events()
     kills_p = [k for k in kills if _in_period(k["time"], period)]
@@ -245,8 +266,8 @@ async def _build_summary_embed(period: str, emoji: str) -> discord.Embed:
     return embed
 
 
-# ─── Daily 9PM EST @ 01:00 UTC ─────────────────────────────────────────────
-@tasks.loop(time=dt.time(hour=2, minute=51, tzinfo=dt.timezone.utc))
+# ─── Daily @ 9 PM America/New_York ────────────────────────────────────────────
+@tasks.loop(time=time(hour=23, minute=18, tzinfo=EST))
 async def daily_summary():
     embed = await _build_summary_embed("daily", "📅")
     chan = bot.get_channel(STAR_CITIZEN_FEED_ID)
@@ -254,10 +275,10 @@ async def daily_summary():
         await chan.send(embed=embed)
 
 
-# ─── Weekly @ Mondays 9PM EST @ 01:00 UTC ────────────────────────────────────────────────
-@tasks.loop(time=dt.time(hour=1, minute=0, tzinfo=dt.timezone.utc))
+# ─── Weekly (Mon) @ 9 PM America/New_York ──────────────────────────────────────
+@tasks.loop(time=time(hour=21, minute=0, tzinfo=EST))
 async def weekly_summary():
-    if datetime.utcnow().weekday() != 0:  # only Mondays
+    if datetime.now(EST).weekday() != 0:
         return
     embed = await _build_summary_embed("weekly", "🗓️")
     chan = bot.get_channel(STAR_CITIZEN_FEED_ID)
@@ -265,10 +286,10 @@ async def weekly_summary():
         await chan.send(embed=embed)
 
 
-# ─── Monthly @ 1st of Month 9PM EST @ 01:00 UTC ─────────────────────────────────────────
-@tasks.loop(time=dt.time(hour=1, minute=0, tzinfo=dt.timezone.utc))
+# ─── Monthly (1st) @ 9 PM America/New_York ─────────────────────────────────────
+@tasks.loop(time=time(hour=21, minute=0, tzinfo=EST))
 async def monthly_summary():
-    if datetime.utcnow().day != 1:
+    if datetime.now(EST).day != 1:
         return
     embed = await _build_summary_embed("monthly", "📆")
     chan = bot.get_channel(STAR_CITIZEN_FEED_ID)
@@ -276,10 +297,10 @@ async def monthly_summary():
         await chan.send(embed=embed)
 
 
-# ─── Quarterly @ 1st of Qtr 9PM EST @ 01:00 UTC ─────────────────────────────────────────
-@tasks.loop(time=dt.time(hour=1, minute=0, tzinfo=dt.timezone.utc))
+# ─── Quarterly (Q-start) @ 9 PM America/New_York ───────────────────────────────
+@tasks.loop(time=time(hour=21, minute=0, tzinfo=EST))
 async def quarterly_summary():
-    now = datetime.utcnow()
+    now = datetime.now(EST)
     if now.month not in (1, 4, 7, 10) or now.day != 1:
         return
     embed = await _build_summary_embed("quarterly", "📊")
@@ -288,13 +309,13 @@ async def quarterly_summary():
         await chan.send(embed=embed)
 
 
-# ─── Yearly @ Jan 1 9PM EST @ 01:00 UTC ──────────────────────────────────────────────────
-@tasks.loop(time=dt.time(hour=1, minute=0, tzinfo=dt.timezone.utc))
+# ─── Yearly (Jan 1) @ 9 PM America/New_York ────────────────────────────────────
+@tasks.loop(time=time(hour=21, minute=0, tzinfo=EST))
 async def yearly_summary():
-    now = datetime.utcnow()
+    now = datetime.now(EST)
     if not (now.month == 1 and now.day == 1):
         return
-    embed = await _build_summary_embed("yearly", "🗓️")
+    embed = await _build_summary_embed("yearly", "🎉")
     chan = bot.get_channel(STAR_CITIZEN_FEED_ID)
     if chan:
         await chan.send(embed=embed)
