@@ -560,7 +560,7 @@ async def leaderboard(
         if in_period(e["time"]):
             kill_counts[e["player"]] = kill_counts.get(e["player"], 0) + 1
     top_k = sorted(kill_counts.items(), key=lambda x: x[1], reverse=True)[:5]
-    kill_lines = "\n".join(f"{i+1}. {p} — {c}K" for i, (p, c) in enumerate(top_k))
+    kill_lines = "\n".join(f"{i+1}. {p} — {c} Kills" for i, (p, c) in enumerate(top_k))
 
     # Top 5 deaths
     death_counts: dict[str, int] = {}
@@ -568,7 +568,9 @@ async def leaderboard(
         if in_period(e["time"]):
             death_counts[e["victim"]] = death_counts.get(e["victim"], 0) + 1
     top_d = sorted(death_counts.items(), key=lambda x: x[1], reverse=True)[:5]
-    death_lines = "\n".join(f"{i+1}. {p} — {c}D" for i, (p, c) in enumerate(top_d))
+    death_lines = "\n".join(
+        f"{i+1}. {p} — {c} Deaths" for i, (p, c) in enumerate(top_d)
+    )
 
     # Top 5 K/D
     stats: dict[str, dict[str, int]] = {}
