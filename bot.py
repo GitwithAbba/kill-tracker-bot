@@ -81,7 +81,17 @@ class GenerateKeyView(discord.ui.View):
 # TEST BELOW
 @bot.tree.command(name="testdaily", description="Manually send the daily summary embed")
 async def testdaily(interaction: discord.Interaction):
-    embed = await _build_summary_embed("daily", "📅")
+    # temporarily comment out the yesterday‐line:
+    # embed = await _build_summary_embed("daily", "📅")
+    # …or just call with today:
+    embed = await _build_summary_embed("today", "📅")
+    await interaction.response.send_message(embed=embed)
+
+
+# TEST TODAY
+@bot.tree.command(name="testtoday", description="Show today’s summary")
+async def testtoday(interaction: discord.Interaction):
+    embed = await _build_summary_embed("today", "📅")
     await interaction.response.send_message(embed=embed)
 
 
@@ -111,7 +121,9 @@ def _in_period(ts: str, period: str) -> bool:
     dt_obj = datetime.fromisoformat(ts.rstrip("Z"))
     now = datetime.utcnow()
     if period == "daily":
-        return dt_obj.date() == now.date()
+        # pull in *all* events whose UTC‐date is yesterday
+        yesterday = (now - timedelta(days=1)).date()
+        return dt_obj.date() == yesterday
     if period == "weekly":
         return (now - dt_obj).days < 7
     if period == "monthly":
@@ -234,7 +246,7 @@ async def _build_summary_embed(period: str, emoji: str) -> discord.Embed:
 
 
 # ─── Daily 9PM EST @ 01:00 UTC ─────────────────────────────────────────────
-@tasks.loop(time=dt.time(hour=1, minute=0, tzinfo=dt.timezone.utc))
+@tasks.loop(time=dt.time(hour=2, minute=51, tzinfo=dt.timezone.utc))
 async def daily_summary():
     embed = await _build_summary_embed("daily", "📅")
     chan = bot.get_channel(STAR_CITIZEN_FEED_ID)
