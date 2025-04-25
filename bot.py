@@ -718,7 +718,7 @@ async def kills(interaction: discord.Interaction):
 
     # Build an embed “card”
     embed = discord.Embed(title="🗡️ Last 5 Kills", color=discord.Color.red())
-    for e in data[-5:]:
+    for e in data[-20:]:
         embed.add_field(
             name=f"{e['player']} ➔ {e['victim']}",
             value=f"{e['time']} • {e['zone']} • {e['weapon']}",
