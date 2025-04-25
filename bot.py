@@ -36,6 +36,19 @@ if not TOKEN or not API_BASE or not API_KEY:
 # ─── Timezone setup ────────────────────────────────────────────────────────────────────
 EST = ZoneInfo("America/New_York")
 
+
+# ─── Defines Mode Descriptions ────────────────────────────────────────────────────────────────────
+def format_mode(raw: str) -> str:
+    if raw.startswith("SC_"):
+        return "Persistent Universe"
+    if raw.startswith("EA_"):
+        return raw[3:]
+    return raw
+
+
+last_kill_id = 0
+last_death_id = ""  # ISO timestamp
+
 # ─── Bot setup ────────────────────────────────────────────────────────────────────
 intents = discord.Intents.default()
 bot = commands.Bot(command_prefix="!", intents=intents)
@@ -267,7 +280,7 @@ async def _build_summary_embed(period: str, emoji: str) -> discord.Embed:
 
 
 # ─── Daily @ 9 PM America/New_York ────────────────────────────────────────────
-@tasks.loop(time=time(hour=23, minute=18, tzinfo=EST))
+@tasks.loop(time=time(hour=21, minute=0, tzinfo=EST))
 async def daily_summary():
     embed = await _build_summary_embed("daily", "📅")
     chan = bot.get_channel(STAR_CITIZEN_FEED_ID)
@@ -354,16 +367,27 @@ async def on_ready():
             )
             await channel.send(embed=embed, view=GenerateKeyView())
 
-    # prime last_kill_id so we don’t backfill
+    # prime last_kill_id
     async with httpx.AsyncClient() as client:
         resp = await client.get(
             f"{API_BASE}/kills", headers={"Authorization": f"Bearer {API_KEY}"}
         )
         resp.raise_for_status()
-        all_kills = resp.json()
-    if all_kills:
+        all_k = resp.json()
+    if all_k:
         global last_kill_id
-        last_kill_id = max(k["id"] for k in all_kills)
+        last_kill_id = max(k["id"] for k in all_k)
+
+    # prime last_death_id
+    async with httpx.AsyncClient() as client:
+        resp = await client.get(
+            f"{API_BASE}/deaths", headers={"Authorization": f"Bearer {API_KEY}"}
+        )
+        resp.raise_for_status()
+        all_d = resp.json()
+    if all_d:
+        global last_death_id
+        last_death_id = max(d["time"] for d in all_d)
 
     # start your kill loop
     if not fetch_and_post_kills.is_running():
@@ -399,7 +423,7 @@ async def on_ready():
 )
 @app_commands.choices(
     mode=[
-        app_commands.Choice(name="Public Universe", value="pu-kill"),
+        app_commands.Choice(name="Persistent Universe", value="pu-kill"),
         app_commands.Choice(name="Arena Commander", value="ac-kill"),
     ]
 )
@@ -415,7 +439,7 @@ async def reportkill(
 ):
     # 1) defer & build timestamp
     await interaction.response.defer(ephemeral=True)
-    time = time or datetime.datetime.utcnow().isoformat()
+    time = time or datetime.utcnow().isoformat()
 
     # 2) full payload matching your backend’s KillEvent schema
     profile_url = f"https://robertsspaceindustries.com/citizens/{player}"
@@ -446,6 +470,14 @@ async def reportkill(
                 timeout=10.0,
             )
         resp.raise_for_status()
+
+    except httpx.HTTPStatusError as e:
+        # catch 4xx/5xx from the API and show the body
+        return await interaction.followup.send(
+            f"❌ Could not record kill [{e.response.status_code}]:\n```{e.response.text}```",
+            ephemeral=True,
+        )
+
     except Exception as e:
         return await interaction.followup.send(
             f"❌ Could not record kill:\n```{e}```", ephemeral=True
@@ -1006,7 +1038,6 @@ async def topdeaths(
 
 
 # Keep track of the highest kill ID we've posted so far
-last_kill_id = 0
 
 
 @tasks.loop(seconds=10)
@@ -1025,17 +1056,14 @@ async def fetch_and_post_kills():
         if kill["id"] <= last_kill_id:
             continue
 
-        # feed selection
         feed_id = PU_KILL_FEED_ID if kill["mode"] == "pu-kill" else AC_KILL_FEED_ID
         channel = bot.get_channel(feed_id)
         if not channel:
             continue
 
-        # URLs
+        # build URLs and thumbnail
         killer_profile = f"https://robertsspaceindustries.com/citizens/{kill['player']}"
         victim_profile = f"https://robertsspaceindustries.com/citizens/{kill['victim']}"
-
-        # always attach your PNG as thumbnail
         file_to_attach = discord.File(
             "3R_Transparent.png", filename="3R_Transparent.png"
         )
@@ -1046,23 +1074,23 @@ async def fetch_and_post_kills():
             color=discord.Color.red(),
             timestamp=discord.utils.parse_time(kill["time"]),
         )
-
         # Killer link (blue)
         embed.add_field(
             name="Killer", value=f"[{kill['player']}]({killer_profile})", inline=False
         )
-
-        # core fields
         embed.add_field(
             name="Victim", value=f"[{kill['victim']}]({victim_profile})", inline=True
         )
         embed.add_field(name="Zone", value=kill["zone"], inline=True)
         embed.add_field(name="Weapon", value=kill["weapon"], inline=True)
         embed.add_field(name="Damage", value=kill["damage_type"], inline=True)
-        embed.add_field(name="Mode", value=kill["game_mode"], inline=True)
+
+        # use our formatter here:
+        display_mode = format_mode(kill["game_mode"])
+        embed.add_field(name="Mode", value=display_mode, inline=True)
+
         embed.add_field(name="Ship", value=kill["killers_ship"], inline=True)
 
-        # Victim organization
         org_name = kill.get("organization_name") or "Unknown"
         org_url = kill.get("organization_url")
         if org_url:
@@ -1074,20 +1102,13 @@ async def fetch_and_post_kills():
         else:
             embed.add_field(name="Victim Organization", value=org_name, inline=False)
 
-        # thumbnail = either remote avatar or your local PNG
         embed.set_thumbnail(url=thumb)
-
-        # send
-        if file_to_attach:
-            await channel.send(embed=embed, file=file_to_attach)
-        else:
-            await channel.send(embed=embed)
+        await channel.send(embed=embed, file=file_to_attach)
 
         last_kill_id = kill["id"]
 
 
 # Keep track of the last‑seen death time
-last_death_id = ""  # or datetime, whichever you prefer
 
 
 @tasks.loop(seconds=10)
@@ -1106,14 +1127,14 @@ async def fetch_and_post_deaths():
         if death["time"] <= last_death_id:
             continue
 
-        # always attach your PNG as thumbnail
         file_to_attach = discord.File(
             "3R_Transparent.png", filename="3R_Transparent.png"
         )
         thumb = "attachment://3R_Transparent.png"
 
+        # route Persistent Universe → PU feed; everything else → AC
         feed_id = (
-            PU_KILL_FEED_ID if "pu" in death["game_mode"].lower() else AC_KILL_FEED_ID
+            PU_KILL_FEED_ID if death["game_mode"].startswith("SC_") else AC_KILL_FEED_ID
         )
         channel = bot.get_channel(feed_id)
         if not channel:
@@ -1125,15 +1146,11 @@ async def fetch_and_post_deaths():
             timestamp=discord.utils.parse_time(death["time"]),
         )
 
-        # Killer
         killer_profile = death.get("rsi_profile")
         embed.add_field(
-            name="Killer",
-            value=f"[{death['killer']}]({killer_profile})",
-            inline=False,
+            name="Killer", value=f"[{death['killer']}]({killer_profile})", inline=False
         )
 
-        # Victim (you) & core fields
         victim_profile = (
             f"https://robertsspaceindustries.com/citizens/{death['victim']}"
         )
@@ -1145,10 +1162,12 @@ async def fetch_and_post_deaths():
         embed.add_field(name="Zone", value=death["zone"], inline=True)
         embed.add_field(name="Weapon", value=death["weapon"], inline=True)
         embed.add_field(name="Damage", value=death["damage_type"], inline=True)
-        embed.add_field(name="Mode", value=death["game_mode"], inline=True)
+
+        display_mode = format_mode(death["game_mode"])
+        embed.add_field(name="Mode", value=display_mode, inline=True)
+
         embed.add_field(name="Killer’s Ship", value=death["killers_ship"], inline=True)
 
-        # Killer’s Organization
         org_name = death.get("organization_name") or "Unknown"
         org_url = death.get("organization_url")
         if org_url:
@@ -1160,10 +1179,9 @@ async def fetch_and_post_deaths():
         else:
             embed.add_field(name="Killer’s Organization", value=org_name, inline=False)
 
-        # thumbnail = your PNG
         embed.set_thumbnail(url=thumb)
-
         await channel.send(embed=embed, file=file_to_attach)
+
         last_death_id = death["time"]
 
 
