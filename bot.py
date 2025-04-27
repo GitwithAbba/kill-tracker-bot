@@ -203,7 +203,7 @@ async def _build_summary_embed(period: str, emoji: str) -> discord.Embed:
         kc[k["player"]] = kc.get(k["player"], 0) + 1
     lines = (
         "\n".join(
-            f"{i+1}. {p} — {c}K" for i, (p, c) in enumerate(_top_list(kc), start=1)
+            f"{i+1}. {p} — {c} Kills" for i, (p, c) in enumerate(_top_list(kc), start=1)
         )
         or "None"
     )
@@ -215,7 +215,8 @@ async def _build_summary_embed(period: str, emoji: str) -> discord.Embed:
         dc[d["victim"]] = dc.get(d["victim"], 0) + 1
     lines = (
         "\n".join(
-            f"{i+1}. {p} — {c}D" for i, (p, c) in enumerate(_top_list(dc), start=1)
+            f"{i+1}. {p} — {c} Deaths"
+            for i, (p, c) in enumerate(_top_list(dc), start=1)
         )
         or "None"
     )
