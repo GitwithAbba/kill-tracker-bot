@@ -13,6 +13,11 @@ from discord.ui import View
 import traceback
 from datetime import datetime, date, time, timedelta, timezone
 from zoneinfo import ZoneInfo
+from aiohttp import web
+import os
+import logging
+import threading
+
 
 # ─── Load & validate env ─────────────────────────────────────────────────────────
 load_dotenv()
@@ -1188,4 +1193,28 @@ async def fetch_and_post_deaths():
         last_death_id = death["time"]
 
 
-bot.run(TOKEN)
+# ─── Health check server ────────────────────────────────────────────────────────
+async def handle_health(request):
+    return web.json_response({"status": "ok"})
+
+
+def start_health_server():
+    def _run():
+        app = web.Application()
+        app.router.add_get("/health", handle_health)
+        port = int(os.environ.get("PORT", 8080))
+        logging.info(f"Starting HTTP server on 0.0.0.0:{port}")
+        # This will block *this* thread, running its own event loop
+        web.run_app(app, host="0.0.0.0", port=port)
+
+    thread = threading.Thread(target=_run, daemon=True)
+    thread.start()
+
+
+# ─── Entry point ────────────────────────────────────────────────────────────────
+if __name__ == "__main__":
+    # 1) Start the tiny HTTP server
+    start_health_server()
+
+    # 2) Finally, launch your Discord bot (this is the one and only bot.run)
+    bot.run(TOKEN)
