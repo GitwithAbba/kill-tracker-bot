@@ -1204,8 +1204,8 @@ def start_health_server():
         app.router.add_get("/health", handle_health)
         port = int(os.environ.get("PORT", 8080))
         logging.info(f"Starting HTTP server on 0.0.0.0:{port}")
-        # This will block *this* thread, running its own event loop
-        web.run_app(app, host="0.0.0.0", port=port)
+        # disable signal-handler registration in this thread:
+        web.run_app(app, host="0.0.0.0", port=port, handle_signals=False)
 
     thread = threading.Thread(target=_run, daemon=True)
     thread.start()
