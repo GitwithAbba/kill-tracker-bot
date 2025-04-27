@@ -1,0 +1,15 @@
+name: Keep Bot Awake
+
+on:
+  schedule:
+    - cron: "*/10 * * * *"
+
+jobs:
+  ping-bot:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Curl bot health
+        run: |
+          curl --fail https://kill-tracker-bot-production.up.railway.app/health \
+            -H "Accept: application/json" \
+          || echo "⚠️ Bot health check failed"
