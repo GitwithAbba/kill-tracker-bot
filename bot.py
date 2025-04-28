@@ -1051,14 +1051,20 @@ async def topdeaths(
 @tasks.loop(seconds=10)
 async def fetch_and_post_kills():
     global last_kill_id
-    async with httpx.AsyncClient() as client:
-        resp = await client.get(
-            f"{API_BASE}/kills",
-            headers={"Authorization": f"Bearer {API_KEY}"},
-            timeout=10.0,
+    try:
+        async with httpx.AsyncClient() as client:
+            resp = await client.get(
+                f"{API_BASE}/kills",
+                headers={"Authorization": f"Bearer {API_KEY}"},
+                timeout=10.0,
+            )
+            resp.raise_for_status()
+            kills = resp.json()
+    except Exception as e:
+        logging.error(
+            "⚠️ fetch_and_post_kills failed, will retry next iteration", exc_info=e
         )
-        resp.raise_for_status()
-        kills = resp.json()
+        return  # swallow and let the loop fire again in 10s
 
     for kill in sorted(kills, key=lambda e: e["id"]):
         if kill["id"] <= last_kill_id:
@@ -1119,17 +1125,24 @@ async def fetch_and_post_kills():
 # Keep track of the last‑seen death time
 
 
-@tasks.loop(seconds=10)
 async def fetch_and_post_deaths():
     global last_death_id
-    async with httpx.AsyncClient() as client:
-        resp = await client.get(
-            f"{API_BASE}/deaths",
-            headers={"Authorization": f"Bearer {API_KEY}"},
-            timeout=10.0,
+
+    # 1) fetch from your backend, but catch any errors so the loop won't die
+    try:
+        async with httpx.AsyncClient() as client:
+            resp = await client.get(
+                f"{API_BASE}/deaths",
+                headers={"Authorization": f"Bearer {API_KEY}"},
+                timeout=10.0,
+            )
+            resp.raise_for_status()
+            deaths = resp.json()
+    except Exception as e:
+        logging.error(
+            "⚠️ fetch_and_post_deaths failed, will retry next iteration", exc_info=e
         )
-        resp.raise_for_status()
-        deaths = resp.json()
+        return  # swallow and let the loop fire again in 10s
 
     for death in sorted(deaths, key=lambda e: e["time"]):
         if death["time"] <= last_death_id:
