@@ -1125,6 +1125,7 @@ async def fetch_and_post_kills():
 # Keep track of the last‑seen death time
 
 
+@tasks.loop(seconds=10)
 async def fetch_and_post_deaths():
     global last_death_id
 
