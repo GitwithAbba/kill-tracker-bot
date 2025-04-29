@@ -44,6 +44,28 @@ EST = ZoneInfo("America/New_York")
 # ─── Guild ID setup ────────────────────────────────────────────────────────────────────
 GUILD_ID = int(os.getenv("GUILD_ID"))
 
+# ─── ignore these NPCs ────────────────────────────────────────────────────────────
+IGNORED_VICTIM_PREFIX = "vlk_juvenile_sentry_"
+
+# ─── weapon name translations ─────────────────────────────────────────────────────
+WEAPON_NAME_MAP: dict[str, str] = {
+    "behr_rifle_ballistic_01": "P4-AR",
+    "klwe_rifle_energy_01": "Gallant",
+    "behr_sniper_ballistic_01": "P6-LR",
+}
+
+
+def format_weapon(raw: str) -> str:
+    """
+    Turn a kill/death weapon code like
+     'behr_rifle_ballistic_01_spc_01_2681914…'
+    into 'P4-AR' (or fall back to the raw code).
+    """
+    for key, pretty in WEAPON_NAME_MAP.items():
+        if raw.startswith(key):
+            return pretty
+    return raw
+
 
 # ─── Defines Mode Descriptions ────────────────────────────────────────────────────────────────────
 def format_mode(raw: str) -> str:
@@ -250,9 +272,12 @@ async def _build_summary_embed(period: str, emoji: str) -> discord.Embed:
     for k in kills_p:
         org = k.get("organization_name") or "Unknown"
         oc[org] = oc.get(org, 0) + 1
+    # filter out Unknown for leaderboard display
+    filtered = {o: c for o, c in oc.items() if o != "Unknown"}
     lines = (
         "\n".join(
-            f"{i+1}. {o} — {c} kills" for i, (o, c) in enumerate(_top_list(oc), start=1)
+            f"{i}. {o} — {c} kills"
+            for i, (o, c) in enumerate(_top_list(filtered), start=1)
         )
         or "None"
     )
@@ -261,7 +286,9 @@ async def _build_summary_embed(period: str, emoji: str) -> discord.Embed:
     # 8) Top Weapon
     wc: dict[str, int] = {}
     for k in kills_p:
-        wc[k["weapon"]] = wc.get(k["weapon"], 0) + 1
+        name = format_weapon(k["weapon"])  # ← map raw ID → friendly
+        wc[name] = wc.get(name, 0) + 1
+
     if wc:
         weapon, cnt = _top_list(wc, 1)[0]
         embed.add_field(
@@ -1068,7 +1095,12 @@ async def fetch_and_post_kills():
         return  # swallow and let the loop fire again in 10s
 
     for kill in sorted(kills, key=lambda e: e["id"]):
+        # 1️ skip stale
         if kill["id"] <= last_kill_id:
+            continue
+
+        # 2️ skip any NPC sentry worms
+        if kill["victim"].startswith(IGNORED_VICTIM_PREFIX):
             continue
 
         feed_id = PU_KILL_FEED_ID if kill["mode"] == "pu-kill" else AC_KILL_FEED_ID
@@ -1097,7 +1129,7 @@ async def fetch_and_post_kills():
             name="Victim", value=f"[{kill['victim']}]({victim_profile})", inline=True
         )
         embed.add_field(name="Zone", value=kill["zone"], inline=True)
-        embed.add_field(name="Weapon", value=kill["weapon"], inline=True)
+        embed.add_field(name="Weapon", value=format_weapon(kill["weapon"]), inline=True)
         embed.add_field(name="Damage", value=kill["damage_type"], inline=True)
 
         # use our formatter here:
@@ -1183,7 +1215,9 @@ async def fetch_and_post_deaths():
             inline=True,
         )
         embed.add_field(name="Zone", value=death["zone"], inline=True)
-        embed.add_field(name="Weapon", value=death["weapon"], inline=True)
+        embed.add_field(
+            name="Weapon", value=format_weapon(death["weapon"]), inline=True
+        )
         embed.add_field(name="Damage", value=death["damage_type"], inline=True)
 
         display_mode = format_mode(death["game_mode"])
