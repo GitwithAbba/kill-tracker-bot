@@ -41,6 +41,9 @@ if not TOKEN or not API_BASE or not API_KEY:
 # ─── Timezone setup ────────────────────────────────────────────────────────────────────
 EST = ZoneInfo("America/New_York")
 
+# ─── Guild ID setup ────────────────────────────────────────────────────────────────────
+GUILD_ID = int(os.getenv("GUILD_ID"))
+
 
 # ─── Defines Mode Descriptions ────────────────────────────────────────────────────────────────────
 def format_mode(raw: str) -> str:
@@ -347,9 +350,10 @@ async def on_ready():
     # register our persistent view
     bot.add_view(GenerateKeyView())
 
-    # sync slash commands
-    await bot.tree.sync()
-    print(f"🗡️ Logged in as {bot.user} — slash commands synced.")
+    # sync *only* to your guild for instant updates:
+    guild = discord.Object(id=GUILD_ID)
+    await bot.tree.sync(guild=guild)
+    print(f"🔁 Slash commands synced to guild {GUILD_ID}")
 
     # post the “Generate Key” card if it’s not already there...
     channel = bot.get_channel(KEY_CHANNEL_ID)
