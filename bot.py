@@ -208,7 +208,7 @@ async def _build_summary_embed(period: str, emoji: str) -> discord.Embed:
         kc[k["player"]] = kc.get(k["player"], 0) + 1
     lines = (
         "\n".join(
-            f"{i+1}. {p} — {c} Kills" for i, (p, c) in enumerate(_top_list(kc), start=1)
+            f"{i}. {p} — {c} Kills" for i, (p, c) in enumerate(_top_list(kc), start=1)
         )
         or "None"
     )
@@ -220,8 +220,7 @@ async def _build_summary_embed(period: str, emoji: str) -> discord.Embed:
         dc[d["victim"]] = dc.get(d["victim"], 0) + 1
     lines = (
         "\n".join(
-            f"{i+1}. {p} — {c} Deaths"
-            for i, (p, c) in enumerate(_top_list(dc), start=1)
+            f"{i}. {p} — {c} Deaths" for i, (p, c) in enumerate(_top_list(dc), start=1)
         )
         or "None"
     )
@@ -566,7 +565,7 @@ async def leaderboard(
         if in_period(e["time"]):
             kill_counts[e["player"]] = kill_counts.get(e["player"], 0) + 1
     top_k = sorted(kill_counts.items(), key=lambda x: x[1], reverse=True)[:5]
-    kill_lines = "\n".join(f"{i+1}. {p} — {c} Kills" for i, (p, c) in enumerate(top_k))
+    kill_lines = "\n".join(f"{i}. {p} — {c} Kills" for i, (p, c) in enumerate(top_k))
 
     # Top 5 deaths
     death_counts: dict[str, int] = {}
@@ -574,9 +573,7 @@ async def leaderboard(
         if in_period(e["time"]):
             death_counts[e["victim"]] = death_counts.get(e["victim"], 0) + 1
     top_d = sorted(death_counts.items(), key=lambda x: x[1], reverse=True)[:5]
-    death_lines = "\n".join(
-        f"{i+1}. {p} — {c} Deaths" for i, (p, c) in enumerate(top_d)
-    )
+    death_lines = "\n".join(f"{i}. {p} — {c} Deaths" for i, (p, c) in enumerate(top_d))
 
     # Top 5 K/D
     stats: dict[str, dict[str, int]] = {}
