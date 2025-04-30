@@ -260,8 +260,7 @@ async def _build_summary_embed(period: str, emoji: str) -> discord.Embed:
     ratios = {p: v["kills"] / max(1, v["deaths"]) for p, v in stats.items()}
     lines = (
         "\n".join(
-            f"{i+1}. {p} — {r:.2f}"
-            for i, (p, r) in enumerate(_top_list(ratios), start=1)
+            f"{i}. {p} — {r:.2f}" for i, (p, r) in enumerate(_top_list(ratios), start=1)
         )
         or "None"
     )
