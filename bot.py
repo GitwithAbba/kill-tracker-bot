@@ -1002,15 +1002,25 @@ async def toporgdeaths(
         if in_period(k["time"]):
             counts[org] = counts.get(org, 0) + 1
 
-    top_list = sorted(counts.items(), key=lambda x: x[1], reverse=True)[:10]
+    # 4) Filter out "Unknown" before picking top 10
+    filtered_counts = {o: c for o, c in counts.items() if o != "Unknown"}
 
-    # 4) Build embed
+    # 5) Pick the top 10 orgs (after filtering)
+    top_list = sorted(filtered_counts.items(), key=lambda x: x[1], reverse=True)[:10]
+
+    # 6) Build embed
     embed = discord.Embed(
         title=f"🏢 Top 10 Organizations by Times Killed ({period.capitalize()})",
         color=discord.Color.dark_gray(),
     )
-    for idx, (org, cnt) in enumerate(top_list, start=1):
-        embed.add_field(name=f"{idx}. {org}", value=f"{cnt} kills", inline=False)
+
+    if top_list:
+        for idx, (org, cnt) in enumerate(top_list, start=1):
+            embed.add_field(name=f"{idx}. {org}", value=f"{cnt} kills", inline=False)
+    else:
+        embed.description = (
+            "No organizations (other than Unknown) have kills in this period."
+        )
 
     await interaction.followup.send(embed=embed)
 
