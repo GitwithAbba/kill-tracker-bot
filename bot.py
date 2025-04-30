@@ -52,6 +52,12 @@ WEAPON_NAME_MAP: dict[str, str] = {
     "behr_rifle_ballistic_01": "P4-AR",
     "klwe_rifle_energy_01": "Gallant",
     "behr_sniper_ballistic_01": "P6-LR",
+    "gmni_lmg_ballistic_01": "F55",
+    "gmni_rifle_ballistic_01": "S71",
+    "behr_lmg_ballistic_01": "FS-9",
+    "behr_smg_ballistic_01": "P8-SC",
+    "none_shotgun_ballistic_01": "DEADRIG",
+    "utfl_melee_01_red01_gungame": "FSK-8 BLOODLINE(GR FIRE KNIFE)",
 }
 
 
