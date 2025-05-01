@@ -286,7 +286,7 @@ async def _build_summary_embed(period: str, emoji: str) -> discord.Embed:
         )
         or "None"
     )
-    embed.add_field(name="🏢 Top Organizations", value=lines, inline=False)
+    embed.add_field(name="🏢 Top Organization Deaths", value=lines, inline=False)
 
     # 8) Top Weapon
     wc: dict[str, int] = {}
