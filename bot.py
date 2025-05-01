@@ -69,6 +69,7 @@ WEAPON_NAME_MAP: dict[str, str] = {
     "ksar_pistol_ballistic_01": "Coda Pistol",
     "klwe_smg_energy_01": "Lumin V SMG",
     "ksar_smg_energy_01": "Custodian SMG",
+    "gmni_pistol_ballistic_01": "LH86 Pistol",
     ##SHIPS
     "MISC_Reliant_": "Reliant",
     "AEGS_Gladius_": "Gladius",
