@@ -49,19 +49,20 @@ IGNORED_VICTIM_PREFIX = "vlk_juvenile_sentry_"
 
 # ─── weapon name translations ─────────────────────────────────────────────────────
 WEAPON_NAME_MAP: dict[str, str] = {
-    "behr_rifle_ballistic_01": "P4-AR",
-    "klwe_rifle_energy_01": "Gallant",
-    "behr_sniper_ballistic_01": "P6-LR",
-    "gmni_lmg_ballistic_01": "F55",
-    "gmni_rifle_ballistic_01": "S71",
-    "behr_lmg_ballistic_01": "FS-9",
-    "behr_smg_ballistic_01": "P8-SC",
-    "none_shotgun_ballistic_01": "DEADRIG",
-    "utfl_melee_01_red01_gungame": "FSK-8 BLOODLINE(GR FIRE KNIFE)",
-    "klwe_lmg_energy_01": "Demeco",
-    "ksar_rifle_energy_01": "Karna",
-    "gmni_smg_ballistic_01": "C54",
-    "ksar_shotgun_energy_01": "Devastator",
+    "behr_rifle_ballistic_01": "P4-AR Rifle",
+    "klwe_rifle_energy_01": "Gallant Rifle",
+    "behr_sniper_ballistic_01": "P6-LR Sniper Rifle",
+    "gmni_lmg_ballistic_01": "F55 LMG",
+    "gmni_rifle_ballistic_01": "S71 Rifle",
+    "behr_lmg_ballistic_01": "FS-9 LMG",
+    "behr_smg_ballistic_01": "P8-SC SMG",
+    "none_shotgun_ballistic_01": "DEADRIG Shotgun",
+    "utfl_melee_01_red01_gungame": "FSK-8 BLOODLINE(GR FIRE KNIFE) Knife",
+    "klwe_lmg_energy_01": "Demeco LMG",
+    "ksar_rifle_energy_01": "Karna Rifle",
+    "gmni_smg_ballistic_01": "C54 SMG",
+    "ksar_shotgun_energy_01": "Devastator Shotgun",
+    "ksar_sniper_ballistic_01": "Scalpel Sniper Rifle",
 }
 
 
