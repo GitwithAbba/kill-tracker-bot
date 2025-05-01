@@ -49,6 +49,7 @@ IGNORED_VICTIM_PREFIX = "vlk_juvenile_sentry_"
 
 # ─── weapon name translations ─────────────────────────────────────────────────────
 WEAPON_NAME_MAP: dict[str, str] = {
+    ##FPS WEAPONS
     "behr_rifle_ballistic_01": "P4-AR Rifle",
     "klwe_rifle_energy_01": "Gallant Rifle",
     "behr_sniper_ballistic_01": "P6-LR Sniper Rifle",
@@ -67,6 +68,12 @@ WEAPON_NAME_MAP: dict[str, str] = {
     "gmni_shotgun_ballistic_01": "R97 Shotgun",
     "ksar_pistol_ballistic_01": "Coda Pistol",
     "klwe_smg_energy_01": "Lumin V SMG",
+    "ksar_smg_energy_01": "Custodian SMG",
+    ##SHIPS
+    "MISC_Reliant_": "Reliant",
+    "AEGS_Gladius_": "Gladius",
+    ##SHIP WEAPONS
+    "KLWE_LaserRepeater_S3": "CF-337 Panther Repeater",
 }
 
 
