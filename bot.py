@@ -63,6 +63,10 @@ WEAPON_NAME_MAP: dict[str, str] = {
     "gmni_smg_ballistic_01": "C54 SMG",
     "ksar_shotgun_energy_01": "Devastator Shotgun",
     "ksar_sniper_ballistic_01": "Scalpel Sniper Rifle",
+    "ksar_shotgun_ballistic_01": "Ravager-212 Shotgun",
+    "gmni_shotgun_ballistic_01": "R97 Shotgun",
+    "ksar_pistol_ballistic_01": "Coda Pistol",
+    "klwe_smg_energy_01": "Lumin V SMG",
 }
 
 
