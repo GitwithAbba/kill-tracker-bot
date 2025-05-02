@@ -51,6 +51,7 @@ IGNORED_VICTIM_PREFIX = "vlk_juvenile_sentry_"
 WEAPON_NAME_MAP: dict[str, str] = {
     ##FPS WEAPONS
     "behr_rifle_ballistic_01": "P4-AR Rifle",
+    "behr_rifle_ballistic_02": "P8-AR Rifle",
     "klwe_rifle_energy_01": "Gallant Rifle",
     "behr_sniper_ballistic_01": "P6-LR Sniper Rifle",
     "gmni_lmg_ballistic_01": "F55 LMG",
@@ -73,8 +74,21 @@ WEAPON_NAME_MAP: dict[str, str] = {
     ##SHIPS
     "MISC_Reliant_": "Reliant",
     "AEGS_Gladius_": "Gladius",
+    "CNOU_Mustang_Alpha": "Mustang Alpha",
+    "MISC_Razor_EX": "Razor EX",
+    "ANVL_Hornet_F7A_Mk2_Exec": "F7A MK2 EXEC",
+    "RSI_Aurora_MR": "Aurora MR",
+    "ANVL_C8R_Pisces": "C8R Pisces",
+    "MRCK_S03_AEGS_Sabre_Firebird": "Sabre Firebird",
+    "ANVL_Arrow": "Arrow",
+    "AMRS_LaserCannon_S4": "Scorpius",
+    "AEGS_Sabre_Comet": "Sabre Comet",
+    "CNOU_Nomad": "Nomad",
+    "ANVL_Hornet_F7CM": "F7C-M Super Hornet",
     ##SHIP WEAPONS
     "KLWE_LaserRepeater_S3": "CF-337 Panther Repeater",
+    "MXOX_NeutronRepeater_S3": "NDB-30 Repeater",
+    "AMRS_LaserCannon_S4": "Omnisky XII Cannon",
 }
 
 
