@@ -210,7 +210,13 @@ def _in_period(ts: str, period: str) -> bool:
         return (now_local - dt_local) < timedelta(days=7)
 
     if period == "monthly":
-        return dt_local.year == now_local.year and dt_local.month == now_local.month
+        # roll back into last calendar‐month
+        last_month = now_local.month - 1
+        year = now_local.year
+        if last_month == 0:
+            last_month = 12
+            year -= 1
+        return dt_local.year == year and dt_local.month == last_month
 
     if period == "quarterly":
         q = (now_local.month - 1) // 3
@@ -357,7 +363,7 @@ async def weekly_summary():
 
 
 # ─── Monthly (1st) @ 9 PM America/New_York ─────────────────────────────────────
-@tasks.loop(time=time(hour=21, minute=0, tzinfo=EST))
+@tasks.loop(time=time(hour=22, minute=10, tzinfo=EST))
 async def monthly_summary():
     if datetime.now(EST).day != 1:
         return
