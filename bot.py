@@ -1202,7 +1202,12 @@ async def fetch_and_post_kills():
         display_mode = format_mode(kill["game_mode"])
         embed.add_field(name="Mode", value=display_mode, inline=True)
 
-        embed.add_field(name="Ship", value=kill["killers_ship"], inline=True)
+        embed.add_field(name="Killer’s Ship", value=kill["killers_ship"], inline=True)
+        embed.add_field(
+            name="Victim’s Ship",
+            value=kill.get("victim_ship") or "Unknown",
+            inline=True,
+        )
 
         org_name = kill.get("organization_name") or "Unknown"
         org_url = kill.get("organization_url")
@@ -1290,6 +1295,9 @@ async def fetch_and_post_deaths():
         embed.add_field(name="Mode", value=display_mode, inline=True)
 
         embed.add_field(name="Killer’s Ship", value=death["killers_ship"], inline=True)
+        embed.add_field(
+            name="Your Ship", value=death.get("victim_ship") or "Unknown", inline=True
+        )
 
         org_name = death.get("organization_name") or "Unknown"
         org_url = death.get("organization_url")
