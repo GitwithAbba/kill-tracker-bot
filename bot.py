@@ -219,13 +219,26 @@ def _in_period(ts: str, period: str) -> bool:
         return dt_local.year == year and dt_local.month == last_month
 
     if period == "quarterly":
-        q = (now_local.month - 1) // 3
-        start = datetime(now_local.year, q * 3 + 1, 1, tzinfo=EST)
-        end = (start + timedelta(days=92)).replace(day=1)
+        # figure out last quarter (1–4), rolling back into prior year if needed
+        current_q = (now_local.month - 1) // 3 + 1
+        last_q = current_q - 1
+        year = now_local.year
+        if last_q == 0:
+            last_q = 4
+            year -= 1
+        # start of last quarter
+        start_month = (last_q - 1) * 3 + 1
+        start = datetime(year, start_month, 1, tzinfo=EST)
+        # end = start of the next quarter
+        next_q = last_q + 1 if last_q < 4 else 1
+        end_year = year if next_q != 1 else year + 1
+        end_month = (next_q - 1) * 3 + 1
+        end = datetime(end_year, end_month, 1, tzinfo=EST)
         return start <= dt_local < end
 
     if period == "yearly":
-        return dt_local.year == now_local.year
+        # last calendar year
+        return dt_local.year == (now_local.year - 1)
 
     return False
 
@@ -363,7 +376,7 @@ async def weekly_summary():
 
 
 # ─── Monthly (1st) @ 9 PM America/New_York ─────────────────────────────────────
-@tasks.loop(time=time(hour=22, minute=10, tzinfo=EST))
+@tasks.loop(time=time(hour=21, minute=0, tzinfo=EST))
 async def monthly_summary():
     if datetime.now(EST).day != 1:
         return
