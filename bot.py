@@ -5,7 +5,7 @@ import asyncio
 from discord.ext import tasks
 import httpx
 import discord
-from discord import app_commands
+from discord import app_commands, Interaction, Embed, Color
 from discord.ext import commands
 from dotenv import load_dotenv
 from discord import ui, ButtonStyle, Embed
@@ -17,6 +17,7 @@ from aiohttp import web
 import os
 import logging
 import threading
+from discord.app_commands import Choice
 
 
 # ─── Load & validate env ─────────────────────────────────────────────────────────
@@ -97,6 +98,9 @@ WEAPON_NAME_MAP: dict[str, str] = {
     "KLWE_LaserRepeater_S3": "CF-337 Panther Repeater",
     "MXOX_NeutronRepeater_S3": "NDB-30 Repeater",
     "AMRS_LaserCannon_S4": "Omnisky XII Cannon",
+    "KLWE_LaserRepeater_S4": "CF-447 Rhino Repeater",
+    ##LOCATIONS
+    "util_a_orbital_001_occu": "LAMINA OLP",
 }
 
 
@@ -176,6 +180,7 @@ class GenerateKeyView(discord.ui.View):
 @bot.tree.command(
     name="testdaily",
     description="Manually send the last 24 h (9 PM → 9 PM EST) summary",
+    guild=discord.Object(id=GUILD_ID),
 )
 async def testdaily(interaction: discord.Interaction):
     embed = await _build_summary_embed("daily", "📅")
@@ -185,6 +190,7 @@ async def testdaily(interaction: discord.Interaction):
 @bot.tree.command(
     name="testtoday",
     description="Show today's EST‐calendar summary (midnight → midnight)",
+    guild=discord.Object(id=GUILD_ID),
 )
 async def testtoday(interaction: discord.Interaction):
     embed = await _build_summary_embed("today", "📅")
@@ -437,13 +443,10 @@ async def yearly_summary():
 
 @bot.event
 async def on_ready():
-    # register our persistent view
     bot.add_view(GenerateKeyView())
-
-    # sync *only* to your guild for instant updates:
     guild = discord.Object(id=GUILD_ID)
     await bot.tree.sync(guild=guild)
-    print(f"🔁 Slash commands synced to guild {GUILD_ID}")
+    print("🔁 Slash commands synced to guild")
 
     # post the “Generate Key” card if it’s not already there...
     channel = bot.get_channel(KEY_CHANNEL_ID)
@@ -510,14 +513,17 @@ async def on_ready():
 
 
 # ─── /reportkill ─────────────────────────────────────────────────────────────────
-@bot.tree.command(name="reportkill", description="Report a new kill")
+@bot.tree.command(
+    name="reportkill",
+    description="Log a kill (timestamp is set automatically)",
+    guild=discord.Object(id=GUILD_ID),
+)
 @app_commands.describe(
     player="Name of the killer",
     victim="Name of the victim",
     zone="Where it happened",
     weapon="Weapon used",
     damage_type="Type of damage",
-    time="ISO timestamp (defaults to now)",
     mode="Which mode: PU or AC",
 )
 @app_commands.choices(
@@ -533,12 +539,12 @@ async def reportkill(
     zone: str,
     weapon: str,
     damage_type: str,
-    time: str = None,
     mode: str = "pu-kill",
 ):
     # 1) defer & build timestamp
     await interaction.response.defer(ephemeral=True)
-    time = time or datetime.utcnow().isoformat()
+    # generate an ISO timestamp for *right now*:
+    now_iso = datetime.utcnow().replace(tzinfo=timezone.utc).isoformat()
 
     # 2) full payload matching your backend’s KillEvent schema
     profile_url = f"https://robertsspaceindustries.com/citizens/{player}"
@@ -548,7 +554,7 @@ async def reportkill(
         "zone": zone,
         "weapon": weapon,
         "damage_type": damage_type,
-        "time": time,
+        "time": now_iso,
         "mode": mode,
         "rsi_profile": profile_url,
         "game_mode": mode,
@@ -614,6 +620,7 @@ async def reportkill(
 @bot.tree.command(
     name="leaderboard",
     description="Combined leaderboards (top kills, deaths, K/D) for a period",
+    guild=discord.Object(id=GUILD_ID),
 )
 @app_commands.describe(
     period="today, week, month, or all time",
@@ -699,7 +706,9 @@ async def leaderboard(
 
 # ─── /stats ───────────────────────────────────────────────────────────────────────
 @bot.tree.command(
-    name="stats", description="Show detailed stats for yourself or someone else"
+    name="stats",
+    description="Show detailed stats for yourself or someone else",
+    guild=discord.Object(id=GUILD_ID),
 )
 @app_commands.describe(
     user="RSI handle (defaults to you)",
@@ -731,7 +740,9 @@ async def stats(
         if e["player"] == target:
             org = e.get("organization_name") or "Unknown"
             org_counts[org] = org_counts.get(org, 0) + 1
-    top_orgs = sorted(org_counts.items(), key=lambda x: x[1], reverse=True)[:5]
+    # toss out any “Unknown” buckets
+    filtered = {o: c for o, c in org_counts.items() if o != "Unknown"}
+    top_orgs = sorted(filtered.items(), key=lambda x: x[1], reverse=True)[:5]
     org_lines = "\n".join(f"{o}: {c}" for o, c in top_orgs) or "None"
 
     embed = discord.Embed(
@@ -747,56 +758,80 @@ async def stats(
 
 
 # ─── /compare ─────────────────────────────────────────────────────────────────────
-@bot.tree.command(name="compare", description="Compare stats for two RSI handles")
+@bot.tree.command(
+    name="compare",
+    description="Compare stats for two RSI handles",
+    guild=discord.Object(id=GUILD_ID),
+)
 @app_commands.describe(
+    period="today, week, month, or all time",
     user1="First RSI handle",
     user2="Second RSI handle",
 )
+@app_commands.choices(
+    period=[
+        app_commands.Choice(name="Today", value="today"),
+        app_commands.Choice(name="This Week", value="week"),
+        app_commands.Choice(name="This Month", value="month"),
+        app_commands.Choice(name="All Time", value="all"),
+    ]
+)
 async def compare(
     interaction: discord.Interaction,
+    period: str,
     user1: str,
     user2: str,
 ):
+
     await interaction.response.defer()
     headers = {"Authorization": f"Bearer {API_KEY}"}
 
-    # fetch
+    # fetch raw events
     async with httpx.AsyncClient() as client:
         r_k = await client.get(f"{API_BASE}/kills", headers=headers, timeout=10.0)
         r_d = await client.get(f"{API_BASE}/deaths", headers=headers, timeout=10.0)
-        r_k.raise_for_status()
-        r_d.raise_for_status()
         kills = r_k.json()
         deaths = r_d.json()
 
-    def stats_for(u: str):
-        k = sum(1 for e in kills if e["player"] == u)
-        d = sum(1 for e in deaths if e["victim"] == u)
+    # reuse your in_period logic
+    def in_period(ts: str) -> bool:
+        dt = datetime.fromisoformat(ts.rstrip("Z"))
+        now = datetime.utcnow()
+        if period == "today":
+            return dt.date() == now.date()
+        elif period == "week":
+            return (now - dt).days < 7
+        elif period == "month":
+            return (dt.year, dt.month) == (now.year, now.month)
+        return True
+
+    def stats_for(handle: str):
+        k = sum(1 for e in kills if e["player"] == handle and in_period(e["time"]))
+        d = sum(1 for e in deaths if e["victim"] == handle and in_period(e["time"]))
         return k, d, k / max(1, d)
 
     k1, d1, r1 = stats_for(user1)
     k2, d2, r2 = stats_for(user2)
 
     embed = discord.Embed(
-        title=f"🔍 Compare: {user1} vs {user2}",
+        title=f"🔍 Compare ({period.capitalize()}): {user1} vs {user2}",
         color=discord.Color.purple(),
     )
     embed.add_field(
-        name=user1,
-        value=f"Kills: {k1}\nDeaths: {d1}\nK/D: {r1:.2f}",
-        inline=True,
+        name=user1, value=f"Kills: {k1}\nDeaths: {d1}\nK/D: {r1:.2f}", inline=True
     )
     embed.add_field(
-        name=user2,
-        value=f"Kills: {k2}\nDeaths: {d2}\nK/D: {r2:.2f}",
-        inline=True,
+        name=user2, value=f"Kills: {k2}\nDeaths: {d2}\nK/D: {r2:.2f}", inline=True
     )
-
     await interaction.followup.send(embed=embed)
 
 
 # ─── /kills ──────────────────────────────────────────────────────────────────────
-@bot.tree.command(name="kills", description="Show the most recent kills")
+@bot.tree.command(
+    name="kills",
+    description="Show the most recent kills",
+    guild=discord.Object(id=GUILD_ID),
+)
 async def kills(interaction: discord.Interaction):
     await interaction.response.defer()
     headers = {"Authorization": f"Bearer {API_KEY}"}
@@ -828,7 +863,9 @@ async def kills(interaction: discord.Interaction):
 
 # ─── /topkd ──────────────────────────────────────────────────────────────────────
 @bot.tree.command(
-    name="topkd", description="Show the top 10 players by K/D ratio over a given period"
+    name="topkd",
+    description="Show the top 10 players by K/D ratio over a given period",
+    guild=discord.Object(id=GUILD_ID),
 )
 @app_commands.describe(
     period="today, week, month, or all time",
@@ -897,11 +934,13 @@ async def topkd(
 
 # ─── /kd ──────────────────────────────────────────────────────────────────────
 @bot.tree.command(
-    name="kd", description="Show your K/D (or someone else’s) over a given period"
+    name="kd",
+    description="Show your K/D (or someone else’s) over a given period",
+    guild=discord.Object(id=GUILD_ID),
 )
 @app_commands.describe(
-    user="RSI handle (defaults to you)",
     period="today, week, month, or all time",
+    user="RSI handle (defaults to you)",
 )
 @app_commands.choices(
     period=[
@@ -913,10 +952,11 @@ async def topkd(
 )
 async def kd(
     interaction: discord.Interaction,
-    user: str | None = None,
     period: str = "all",
+    user: str | None = None,
 ):
     await interaction.response.defer()
+    # fallback to yourself if user==None or blank
     target = user or interaction.user.name
     headers = {"Authorization": f"Bearer {API_KEY}"}
 
@@ -962,7 +1002,11 @@ async def kd(
 
 
 # ─── /topkills ──────────────────────────────────────────────────────────────────────
-@bot.tree.command(name="topkills", description="Show the top N players by kills")
+@bot.tree.command(
+    name="topkills",
+    description="Show the top N players by kills",
+    guild=discord.Object(id=GUILD_ID),
+)
 @app_commands.describe(
     mode="Public Universe or Arena Commander",
     period="today, week, month, or all time",
@@ -1022,6 +1066,7 @@ async def topkills(
 @bot.tree.command(
     name="toporgdeaths",
     description="Show the top 10 organizations by how often they were killed",
+    guild=discord.Object(id=GUILD_ID),
 )
 @app_commands.describe(
     period="today, week, month, or all time",
@@ -1093,6 +1138,7 @@ async def toporgdeaths(
 @bot.tree.command(
     name="topdeaths",
     description="Show the top N players by how often they died",
+    guild=discord.Object(id=GUILD_ID),
 )
 @app_commands.describe(
     period="today, week, month, or all time",
