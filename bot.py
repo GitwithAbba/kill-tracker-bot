@@ -350,7 +350,7 @@ async def _build_summary_embed(period: str, emoji: str) -> discord.Embed:
         )
         or "None"
     )
-    embed.add_field(name="🏢 Top Organization Deaths", value=lines, inline=False)
+    embed.add_field(name="🏢 Top Organization (Kills)", value=lines, inline=False)
 
     # 8) Top Weapon
     wc: dict[str, int] = {}
@@ -383,13 +383,105 @@ async def _build_summary_embed(period: str, emoji: str) -> discord.Embed:
     return embed
 
 
+# ─── Helpers for Top‑Kills cards ──────────────────────────────────────────────
+
+_PERIOD_DESC = {
+    "daily": "within the last 24 hours.",
+    "weekly": "within the last 7 days.",
+    "monthly": "within the last calendar month.",
+    "quarterly": "within the last quarter.",
+    "yearly": "within the last calendar year.",
+}
+
+
+async def _build_top_pu_embed(period: str) -> discord.Embed:
+    """Top 10 kills in Persistent Universe."""
+    kills, _ = await _fetch_events()
+    # filter by period + PU game_mode
+    filtered = [
+        k
+        for k in kills
+        if _in_period(k["time"], period) and k["game_mode"].startswith("SC_")
+    ]
+    counts = {}
+    for k in filtered:
+        counts[k["player"]] = counts.get(k["player"], 0) + 1
+    top10 = _top_list(counts, 10)
+
+    embed = discord.Embed(
+        title=f"🏆 Top Kills in PU ({period.capitalize()})",
+        description=f"These members have the most kills in the Persistent Universe {_PERIOD_DESC[period]}",
+        color=discord.Color.blue(),
+    )
+    for i, (player, cnt) in enumerate(top10, start=1):
+        embed.add_field(name=f"{i}. {player}", value=f"{cnt} kills", inline=False)
+    return embed
+
+
+async def _build_top_ac_flight_embed(period: str) -> discord.Embed:
+    """Top 10 kills in AC Flight modes (Squadron Battle & Free Flight)."""
+    kills, _ = await _fetch_events()
+    modes = {"SquadronBattle", "FreeFlight"}
+    filtered = [
+        k
+        for k in kills
+        if _in_period(k["time"], period)
+        and k["game_mode"].startswith("EA_")
+        and k["game_mode"][3:] in modes
+    ]
+    counts = {}
+    for k in filtered:
+        counts[k["player"]] = counts.get(k["player"], 0) + 1
+    top10 = _top_list(counts, 10)
+
+    embed = discord.Embed(
+        title=f"✈️ Top Kills in AC (Flight Modes) ({period.capitalize()})",
+        description=f"These members have the most kills in Squadron Battle and Free Flight {_PERIOD_DESC[period]}",
+        color=discord.Color.gold(),
+    )
+    for i, (player, cnt) in enumerate(top10, start=1):
+        embed.add_field(name=f"{i}. {player}", value=f"{cnt} kills", inline=False)
+    return embed
+
+
+async def _build_top_ac_fps_embed(period: str) -> discord.Embed:
+    """Top 10 kills in AC FPS modes (Elimination, Kill Confirmed, Gun Game)."""
+    kills, _ = await _fetch_events()
+    modes = {"Elimination", "KillConfirmed", "GunGame"}
+    filtered = [
+        k
+        for k in kills
+        if _in_period(k["time"], period)
+        and k["game_mode"].startswith("EA_")
+        and k["game_mode"][3:] in modes
+    ]
+    counts = {}
+    for k in filtered:
+        counts[k["player"]] = counts.get(k["player"], 0) + 1
+    top10 = _top_list(counts, 10)
+
+    embed = discord.Embed(
+        title=f"🔫 Top Kills in AC (FPS Modes) ({period.capitalize()})",
+        description=f"These members have the most kills in Elimination, Kill Confirmed, and Gun Game {_PERIOD_DESC[period]}",
+        color=discord.Color.dark_theme(),
+    )
+    for i, (player, cnt) in enumerate(top10, start=1):
+        embed.add_field(name=f"{i}. {player}", value=f"{cnt} kills", inline=False)
+    return embed
+
+
 # ─── Daily @ 9 PM America/New_York ────────────────────────────────────────────
 @tasks.loop(time=time(hour=21, minute=0, tzinfo=EST))
 async def daily_summary():
     embed = await _build_summary_embed("daily", "📅")
     chan = bot.get_channel(STAR_CITIZEN_FEED_ID)
     if chan:
+        # 1) your existing summary
         await chan.send(embed=embed)
+        # 2) the three new leaderboard cards
+        await chan.send(embed=await _build_top_pu_embed("daily"))
+        await chan.send(embed=await _build_top_ac_flight_embed("daily"))
+        await chan.send(embed=await _build_top_ac_fps_embed("daily"))
 
 
 # ─── Weekly (Mon) @ 9 PM America/New_York ──────────────────────────────────────
@@ -400,7 +492,12 @@ async def weekly_summary():
     embed = await _build_summary_embed("weekly", "🗓️")
     chan = bot.get_channel(STAR_CITIZEN_FEED_ID)
     if chan:
+        # 1) your existing summary
         await chan.send(embed=embed)
+        # 2) the three new leaderboard cards
+        await chan.send(embed=await _build_top_pu_embed("weekly"))
+        await chan.send(embed=await _build_top_ac_flight_embed("weekly"))
+        await chan.send(embed=await _build_top_ac_fps_embed("weekly"))
 
 
 # ─── Monthly (1st) @ 9 PM America/New_York ─────────────────────────────────────
@@ -411,7 +508,12 @@ async def monthly_summary():
     embed = await _build_summary_embed("monthly", "📆")
     chan = bot.get_channel(STAR_CITIZEN_FEED_ID)
     if chan:
+        # 1) your existing summary
         await chan.send(embed=embed)
+        # 2) the three new leaderboard cards
+        await chan.send(embed=await _build_top_pu_embed("monthly"))
+        await chan.send(embed=await _build_top_ac_flight_embed("monthly"))
+        await chan.send(embed=await _build_top_ac_fps_embed("monthly"))
 
 
 # ─── Quarterly (Q-start) @ 9 PM America/New_York ───────────────────────────────
@@ -423,7 +525,12 @@ async def quarterly_summary():
     embed = await _build_summary_embed("quarterly", "📊")
     chan = bot.get_channel(STAR_CITIZEN_FEED_ID)
     if chan:
+        # 1) your existing summary
         await chan.send(embed=embed)
+        # 2) the three new leaderboard cards
+        await chan.send(embed=await _build_top_pu_embed("quarterly"))
+        await chan.send(embed=await _build_top_ac_flight_embed("quarterly"))
+        await chan.send(embed=await _build_top_ac_fps_embed("quarterly"))
 
 
 # ─── Yearly (Jan 1) @ 9 PM America/New_York ────────────────────────────────────
@@ -435,7 +542,12 @@ async def yearly_summary():
     embed = await _build_summary_embed("yearly", "🎉")
     chan = bot.get_channel(STAR_CITIZEN_FEED_ID)
     if chan:
+        # 1) your existing summary
         await chan.send(embed=embed)
+        # 2) the three new leaderboard cards
+        await chan.send(embed=await _build_top_pu_embed("yearly"))
+        await chan.send(embed=await _build_top_ac_flight_embed("yearly"))
+        await chan.send(embed=await _build_top_ac_fps_embed("yearly"))
 
 
 # ─── api key generator ──────────────────────────────────────────────────
@@ -590,7 +702,7 @@ async def reportkill(
 
     # 3) confirm back to the user
     await interaction.followup.send(
-        f"✅ Kill recorded for **{player}** vs **{victim}** at `{time}`.",
+        f"✅ Kill recorded for **{player}** vs **{victim}** at `{now_iso}`.",
         ephemeral=True,
     )
 
@@ -767,55 +879,89 @@ async def stats(
     period="today, week, month, or all time",
     user1="First RSI handle",
     user2="Second RSI handle",
+    mode="Which game‐mode slice to compare",
 )
 @app_commands.choices(
     period=[
-        app_commands.Choice(name="Today", value="today"),
-        app_commands.Choice(name="This Week", value="week"),
-        app_commands.Choice(name="This Month", value="month"),
-        app_commands.Choice(name="All Time", value="all"),
-    ]
+        Choice(name="Today", value="today"),
+        Choice(name="This Week", value="week"),
+        Choice(name="This Month", value="month"),
+        Choice(name="All Time", value="all"),
+    ],
+    mode=[
+        Choice(name="All", value="all"),
+        Choice(name="PU Only", value="pu"),
+        Choice(name="AC Flight Only", value="ac-flight"),
+        Choice(name="AC FPS Only", value="ac-fps"),
+    ],
 )
 async def compare(
-    interaction: discord.Interaction,
+    interaction: Interaction,
     period: str,
     user1: str,
     user2: str,
+    mode: str = "all",
 ):
-
     await interaction.response.defer()
+
+    # Fetch once
     headers = {"Authorization": f"Bearer {API_KEY}"}
-
-    # fetch raw events
     async with httpx.AsyncClient() as client:
-        r_k = await client.get(f"{API_BASE}/kills", headers=headers, timeout=10.0)
-        r_d = await client.get(f"{API_BASE}/deaths", headers=headers, timeout=10.0)
-        kills = r_k.json()
-        deaths = r_d.json()
+        kills = (
+            await client.get(f"{API_BASE}/kills", headers=headers, timeout=10.0)
+        ).json()
+        deaths = (
+            await client.get(f"{API_BASE}/deaths", headers=headers, timeout=10.0)
+        ).json()
 
-    # reuse your in_period logic
+    # Helpers
     def in_period(ts: str) -> bool:
         dt = datetime.fromisoformat(ts.rstrip("Z"))
         now = datetime.utcnow()
         if period == "today":
             return dt.date() == now.date()
-        elif period == "week":
+        if period == "week":
             return (now - dt).days < 7
-        elif period == "month":
+        if period == "month":
             return (dt.year, dt.month) == (now.year, now.month)
         return True
 
+    def in_mode(ev):
+        gm = ev["game_mode"]
+        if mode == "pu":
+            return gm.startswith("SC_")
+        if mode == "ac-flight":
+            return gm.startswith("EA_") and gm[3:] in {"SquadronBattle", "FreeFlight"}
+        if mode == "ac-fps":
+            return gm.startswith("EA_") and gm[3:] in {
+                "Elimination",
+                "KillConfirmed",
+                "GunGame",
+            }
+        return True
+
+    # Single stats_for, incorporating both filters
     def stats_for(handle: str):
-        k = sum(1 for e in kills if e["player"] == handle and in_period(e["time"]))
-        d = sum(1 for e in deaths if e["victim"] == handle and in_period(e["time"]))
+        k = sum(
+            1
+            for e in kills
+            if e["player"] == handle and in_period(e["time"]) and in_mode(e)
+        )
+        d = sum(
+            1
+            for e in deaths
+            if e["victim"] == handle and in_period(e["time"]) and in_mode(e)
+        )
         return k, d, k / max(1, d)
 
+    # Compute
     k1, d1, r1 = stats_for(user1)
     k2, d2, r2 = stats_for(user2)
 
-    embed = discord.Embed(
-        title=f"🔍 Compare ({period.capitalize()}): {user1} vs {user2}",
-        color=discord.Color.purple(),
+    # Build & send embed
+    embed = Embed(
+        title=f"🔍 Compare ({period.capitalize()} | {mode})\n{user1} vs {user2}",
+        color=Color.purple(),
     )
     embed.add_field(
         name=user1, value=f"Kills: {k1}\nDeaths: {d1}\nK/D: {r1:.2f}", inline=True
@@ -823,6 +969,7 @@ async def compare(
     embed.add_field(
         name=user2, value=f"Kills: {k2}\nDeaths: {d2}\nK/D: {r2:.2f}", inline=True
     )
+
     await interaction.followup.send(embed=embed)
 
 
