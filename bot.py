@@ -471,7 +471,7 @@ async def _build_top_ac_fps_embed(period: str) -> discord.Embed:
 
 
 # ─── Daily @ 9 PM America/New_York ────────────────────────────────────────────
-@tasks.loop(time=time(hour=16, minute=19, tzinfo=EST))
+@tasks.loop(time=time(hour=21, minute=0, tzinfo=EST))
 async def daily_summary():
     embed = await _build_summary_embed("daily", "📅")
     chan = bot.get_channel(STAR_CITIZEN_FEED_ID)
