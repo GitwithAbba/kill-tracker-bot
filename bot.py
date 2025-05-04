@@ -1201,7 +1201,11 @@ async def fetch_and_post_kills():
         embed.add_field(
             name="Victim", value=f"[{kill['victim']}]({victim_profile})", inline=True
         )
-        embed.add_field(name="Zone", value=kill["zone"], inline=True)
+        embed.add_field(
+            name="Zone",
+            value=format_weapon(kill["zone"]) or kill["zone"] or "Unknown",
+            inline=True,
+        )
         embed.add_field(name="Weapon", value=format_weapon(kill["weapon"]), inline=True)
         embed.add_field(name="Damage", value=kill["damage_type"], inline=True)
 
@@ -1209,10 +1213,14 @@ async def fetch_and_post_kills():
         display_mode = format_mode(kill["game_mode"])
         embed.add_field(name="Mode", value=display_mode, inline=True)
 
-        embed.add_field(name="Killer’s Ship", value=kill["killers_ship"], inline=True)
+        embed.add_field(
+            name="Killer’s Ship",
+            value=format_weapon(kill["killers_ship"]) or "Unknown",
+            inline=True,
+        )
         embed.add_field(
             name="Victim’s Ship",
-            value=kill.get("victim_ship") or "Unknown",
+            value=format_weapon(kill.get("victim_ship") or "") or "Unknown",
             inline=True,
         )
 
@@ -1292,7 +1300,11 @@ async def fetch_and_post_deaths():
             value=f"[{death['victim']}]({victim_profile})",
             inline=True,
         )
-        embed.add_field(name="Zone", value=death["zone"], inline=True)
+        embed.add_field(
+            name="Zone",
+            value=format_weapon(death["zone"]) or death["zone"] or "Unknown",
+            inline=True,
+        )
         embed.add_field(
             name="Weapon", value=format_weapon(death["weapon"]), inline=True
         )
@@ -1301,9 +1313,15 @@ async def fetch_and_post_deaths():
         display_mode = format_mode(death["game_mode"])
         embed.add_field(name="Mode", value=display_mode, inline=True)
 
-        embed.add_field(name="Killer’s Ship", value=death["killers_ship"], inline=True)
         embed.add_field(
-            name="Your Ship", value=death.get("victim_ship") or "Unknown", inline=True
+            name="Killer’s Ship",
+            value=format_weapon(death["killers_ship"]) or "Unknown",
+            inline=True,
+        )
+        embed.add_field(
+            name="Your Ship",
+            value=format_weapon(death.get("victim_ship") or "") or "Unknown",
+            inline=True,
         )
 
         org_name = death.get("organization_name") or "Unknown"
