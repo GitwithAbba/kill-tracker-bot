@@ -557,9 +557,10 @@ async def yearly_summary():
 async def on_ready():
     bot.add_view(GenerateKeyView())
 
-    # 1) clear *global* commands so we don’t get duplicates
+    # 1) Clear out any leftover *global* commands
     bot.tree.clear_commands(guild=None)
-    # 2) sync only to your guild (instant updates)
+
+    # 2) Sync only to your guild for instant updates
     guild = discord.Object(id=GUILD_ID)
     await bot.tree.sync(guild=guild)
     print("🔁 Slash commands synced to guild (globals cleared)")
