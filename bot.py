@@ -555,10 +555,12 @@ async def yearly_summary():
 
 @bot.event
 async def on_ready():
-    # 1) clear any leftover *global* commands
-    await bot.tree.clear_commands()
+    bot.add_view(GenerateKeyView())
 
-    # 2) re‐register *only* your guild commands
+    # 1) clear *global* commands so we don’t get duplicates
+    await bot.tree.clear_commands(guild=None)
+
+    # 2) sync only to your guild (instant updates)
     guild = discord.Object(id=GUILD_ID)
     await bot.tree.sync(guild=guild)
     print("🔁 Slash commands synced to guild (globals cleared)")
@@ -640,12 +642,20 @@ async def on_ready():
     weapon="Weapon used",
     damage_type="Type of damage",
     mode="Which mode: PU or AC",
+    submode="If AC, choose the sub‑mode (flight or FPS)",
 )
 @app_commands.choices(
     mode=[
         app_commands.Choice(name="Persistent Universe", value="pu-kill"),
         app_commands.Choice(name="Arena Commander", value="ac-kill"),
-    ]
+    ],
+    submode=[
+        Choice(name="Squadron Battle", value="SquadronBattle"),
+        Choice(name="Free Flight", value="FreeFlight"),
+        Choice(name="Elimination", value="Elimination"),
+        Choice(name="Kill Confirmed", value="KillConfirmed"),
+        Choice(name="Gun Game", value="GunGame"),
+    ],
 )
 async def reportkill(
     interaction: discord.Interaction,
@@ -655,11 +665,21 @@ async def reportkill(
     weapon: str,
     damage_type: str,
     mode: str = "pu-kill",
+    submode: str | None = None,
 ):
-    # 1) defer & build timestamp
     await interaction.response.defer(ephemeral=True)
-    # generate an ISO timestamp for *right now*:
     now_iso = datetime.utcnow().replace(tzinfo=timezone.utc).isoformat()
+
+    # determine game_mode for the payload
+    if mode == "ac-kill":
+        if not submode:
+            return await interaction.followup.send(
+                "❌ You must choose an AC submode for Arena Commander kills.",
+                ephemeral=True,
+            )
+        game_mode = f"EA_{submode}"
+    else:
+        game_mode = "SC_Default"
 
     # 2) full payload matching your backend’s KillEvent schema
     profile_url = f"https://robertsspaceindustries.com/citizens/{player}"
@@ -672,7 +692,7 @@ async def reportkill(
         "time": now_iso,
         "mode": mode,
         "rsi_profile": profile_url,
-        "game_mode": mode,
+        "game_mode": game_mode,
         "client_ver": "manual",
         "killers_ship": "N/A",
         "avatar_url": None,
@@ -1184,21 +1204,23 @@ async def topkills(
         resp.raise_for_status()
         data = resp.json()
 
-    def in_period(ts: str) -> bool:
-        dt_obj = datetime.fromisoformat(ts.rstrip("Z"))
-        now = datetime.utcnow()
-        if period == "today":
-            return dt_obj.date() == now.date()
-        if period == "week":
-            return (now - dt_obj).days < 7
-        if period == "month":
-            return (now - dt_obj).days < 30
-        return _in_period(ts, period)
+    def in_period_ts(ts: str) -> bool:
+        # “all” means no filtering
+        if period == "all":
+            return True
+
+        # map slash‐period → helper‐period
+        mapping = {
+            "today": "today",
+            "week": "weekly",
+            "month": "monthly",
+        }
+        helper_period = mapping.get(period, period)
+        return _in_period(ts, helper_period)
 
     stats: dict[str, int] = {}
     for k in data:
-        if k["mode"] == mode and in_period(k["time"]):
-            print(k["time"], "→ in_period?", in_period(k["time"]))
+        if k["mode"] == mode and in_period_ts(k["time"]):
             stats[k["player"]] = stats.get(k["player"], 0) + 1
 
     top_list = sorted(stats.items(), key=lambda x: x[1], reverse=True)[:limit]
