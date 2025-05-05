@@ -18,7 +18,6 @@ import os
 import logging
 import threading
 from discord.app_commands import Choice
-from bot import _in_period
 
 
 # ─── Load & validate env ─────────────────────────────────────────────────────────
