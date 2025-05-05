@@ -559,10 +559,9 @@ async def on_ready():
 
     # 1) clear *global* commands so we don’t get duplicates
     bot.tree.clear_commands(guild=None)
-
     # 2) sync only to your guild (instant updates)
     guild = discord.Object(id=GUILD_ID)
-    await bot.tree.sync(guild=guild)
+    bot.tree.sync(guild=guild)
     print("🔁 Slash commands synced to guild (globals cleared)")
 
     # post the “Generate Key” card if it’s not already there...
