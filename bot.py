@@ -558,7 +558,7 @@ async def on_ready():
     bot.add_view(GenerateKeyView())
 
     # 1) clear *global* commands so we don’t get duplicates
-    await bot.tree.clear_commands(guild=None)
+    bot.tree.clear_commands(guild=None)
 
     # 2) sync only to your guild (instant updates)
     guild = discord.Object(id=GUILD_ID)
@@ -1205,18 +1205,16 @@ async def topkills(
         data = resp.json()
 
     def in_period_ts(ts: str) -> bool:
-        # “all” means no filtering
-        if period == "all":
-            return True
-
-        # map slash‐period → helper‐period
-        mapping = {
-            "today": "today",
-            "week": "weekly",
-            "month": "monthly",
-        }
-        helper_period = mapping.get(period, period)
-        return _in_period(ts, helper_period)
+        dt = datetime.fromisoformat(ts.rstrip("Z"))
+        now = datetime.utcnow()
+        if period == "today":
+            return dt.date() == now.date()
+        if period == "week":
+            return (now - dt).days < 7
+        if period == "month":
+            return dt.year == now.year and dt.month == now.month
+        # “all” or anything else:
+        return True
 
     stats: dict[str, int] = {}
     for k in data:
