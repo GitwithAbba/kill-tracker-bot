@@ -18,6 +18,7 @@ import os
 import logging
 import threading
 from discord.app_commands import Choice
+from bot import _in_period
 
 
 # ─── Load & validate env ─────────────────────────────────────────────────────────
@@ -555,10 +556,13 @@ async def yearly_summary():
 
 @bot.event
 async def on_ready():
-    bot.add_view(GenerateKeyView())
+    # 1) clear any leftover *global* commands
+    await bot.tree.clear_commands()
+
+    # 2) re‐register *only* your guild commands
     guild = discord.Object(id=GUILD_ID)
     await bot.tree.sync(guild=guild)
-    print("🔁 Slash commands synced to guild")
+    print("🔁 Slash commands synced to guild (globals cleared)")
 
     # post the “Generate Key” card if it’s not already there...
     channel = bot.get_channel(KEY_CHANNEL_ID)
@@ -1189,12 +1193,13 @@ async def topkills(
         if period == "week":
             return (now - dt_obj).days < 7
         if period == "month":
-            return now.year == dt_obj.year and dt_obj.month == now.month
-        return True
+            return (now - dt_obj).days < 30
+        return _in_period(ts, period)
 
     stats: dict[str, int] = {}
     for k in data:
         if k["mode"] == mode and in_period(k["time"]):
+            print(k["time"], "→ in_period?", in_period(k["time"]))
             stats[k["player"]] = stats.get(k["player"], 0) + 1
 
     top_list = sorted(stats.items(), key=lambda x: x[1], reverse=True)[:limit]
