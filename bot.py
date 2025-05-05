@@ -557,15 +557,10 @@ async def yearly_summary():
 async def on_ready():
     bot.add_view(GenerateKeyView())
 
-    # 1) Clear out any leftover *global* commands
-    bot.tree.clear_commands(guild=None)
-    # 2) Push that deletion to Discord (so globals go away immediately)
-    await bot.tree.sync()
-
-    # 3) Now register *only* your guild commands (instant update)
+    # Sync only to your guild for instant updates
     guild = discord.Object(id=GUILD_ID)
     await bot.tree.sync(guild=guild)
-    print("🔁 Slash commands synced to guild (globals cleared)")
+    print("🔁 Slash commands synced to guild")
 
     # post the “Generate Key” card if it’s not already there...
     channel = bot.get_channel(KEY_CHANNEL_ID)
