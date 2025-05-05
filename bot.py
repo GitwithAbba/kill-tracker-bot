@@ -559,8 +559,10 @@ async def on_ready():
 
     # 1) Clear out any leftover *global* commands
     bot.tree.clear_commands(guild=None)
+    # 2) Push that deletion to Discord (so globals go away immediately)
+    await bot.tree.sync()
 
-    # 2) Sync only to your guild for instant updates
+    # 3) Now register *only* your guild commands (instant update)
     guild = discord.Object(id=GUILD_ID)
     await bot.tree.sync(guild=guild)
     print("🔁 Slash commands synced to guild (globals cleared)")
