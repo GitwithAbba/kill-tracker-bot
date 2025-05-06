@@ -492,7 +492,7 @@ async def _build_top_ac_fps_embed(period: str) -> discord.Embed:
 
 
 # ─── Daily @ 9 PM America/New_York ────────────────────────────────────────────
-@tasks.loop(time=time(hour=1, minute=50, tzinfo=EST))
+@tasks.loop(time=time(hour=21, minute=0, tzinfo=EST))
 async def daily_summary():
     embed = await _build_summary_embed("daily", "📅")
     chan = bot.get_channel(STAR_CITIZEN_FEED_ID)
@@ -506,7 +506,7 @@ async def daily_summary():
 
 
 # ─── Weekly (Mon) @ 9 PM America/New_York ──────────────────────────────────────
-@tasks.loop(time=time(hour=1, minute=50, tzinfo=EST))
+@tasks.loop(time=time(hour=21, minute=0, tzinfo=EST))
 async def weekly_summary():
     if datetime.now(EST).weekday() != 0:
         return
