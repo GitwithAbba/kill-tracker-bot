@@ -447,31 +447,52 @@ async def _build_top_ac_flight_embed(period: str) -> discord.Embed:
 async def _build_top_ac_fps_embed(period: str) -> discord.Embed:
     """Top 10 kills in AC FPS modes (Elimination, Kill Confirmed, Gun Game)."""
     kills, _ = await _fetch_events()
+
+    # the “pure” FPS mode names we care about
     modes = {"Elimination", "KillConfirmed", "GunGame"}
-    filtered = [
-        k
-        for k in kills
-        if _in_period(k["time"], period)
-        and k["game_mode"].startswith("EA_")
-        and k["game_mode"][3:] in modes
-    ]
-    counts = {}
+
+    # filter by period + EA_ prefix + FPS suffix stripped
+    filtered = []
+    for k in kills:
+        if not _in_period(k["time"], period):
+            continue
+        gm = k["game_mode"]
+        if not gm.startswith("EA_"):
+            continue
+
+        sub = gm[3:]  # e.g. "FPSGunGame"
+        if sub.startswith("FPS"):
+            sub = sub[3:]  # strip off "FPS" → "GunGame"
+
+        if sub in modes:
+            filtered.append(k)
+
+    # tally per player
+    counts: dict[str, int] = {}
     for k in filtered:
         counts[k["player"]] = counts.get(k["player"], 0) + 1
     top10 = _top_list(counts, 10)
 
+    # build the embed
     embed = discord.Embed(
         title=f"🔫 Top Kills in AC (FPS Modes) ({period.capitalize()})",
-        description=f"These members have the most kills in Elimination, Kill Confirmed, and Gun Game {_PERIOD_DESC[period]}",
+        description=(
+            f"These members have the most kills in Elimination, Kill Confirmed, "
+            f"and Gun Game {_PERIOD_DESC[period]}"
+        ),
         color=discord.Color.dark_theme(),
     )
-    for i, (player, cnt) in enumerate(top10, start=1):
-        embed.add_field(name=f"{i}. {player}", value=f"{cnt} kills", inline=False)
+    if top10:
+        for i, (player, cnt) in enumerate(top10, start=1):
+            embed.add_field(name=f"{i}. {player}", value=f"{cnt} kills", inline=False)
+    else:
+        embed.description += "\n\n_No kills recorded for these modes in this period._"
+
     return embed
 
 
 # ─── Daily @ 9 PM America/New_York ────────────────────────────────────────────
-@tasks.loop(time=time(hour=21, minute=0, tzinfo=EST))
+@tasks.loop(time=time(hour=1, minute=50, tzinfo=EST))
 async def daily_summary():
     embed = await _build_summary_embed("daily", "📅")
     chan = bot.get_channel(STAR_CITIZEN_FEED_ID)
@@ -485,7 +506,7 @@ async def daily_summary():
 
 
 # ─── Weekly (Mon) @ 9 PM America/New_York ──────────────────────────────────────
-@tasks.loop(time=time(hour=21, minute=0, tzinfo=EST))
+@tasks.loop(time=time(hour=1, minute=50, tzinfo=EST))
 async def weekly_summary():
     if datetime.now(EST).weekday() != 0:
         return
