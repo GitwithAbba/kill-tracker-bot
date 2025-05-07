@@ -75,6 +75,8 @@ WEAPON_NAME_MAP: dict[str, str] = {
     "apar_special_ballistic_01": "Railgun",
     "gmni_sniper_ballistic_01": "A03 Sniper Rifle",
     "behr_shotgun_ballistic_01": "BR-2 Shotgun",
+    "behr_pistol_ballistic_01": "S-38 Pistol",
+    "lbco_pistol_energy_01": "Yubarev Pistol",
     ##SHIPS
     "MISC_Reliant_": "Reliant",
     "AEGS_Gladius_": "Gladius",
@@ -99,6 +101,7 @@ WEAPON_NAME_MAP: dict[str, str] = {
     "MXOX_NeutronRepeater_S3": "NDB-30 Repeater",
     "AMRS_LaserCannon_S4": "Omnisky XII Cannon",
     "KLWE_LaserRepeater_S4": "CF-447 Rhino Repeater",
+    "POWR_AEGS_S01_Regulus_SCitem_": "Thunderbolt III Missile",
     ##LOCATIONS
     "util_a_orbital_001_occu": "LAMINA OLP",
 }
@@ -366,10 +369,14 @@ async def _build_summary_embed(period: str, emoji: str) -> discord.Embed:
     else:
         embed.add_field(name="🔫 Top Weapon", value="None", inline=True)
 
-    # 9) Hot Zone
+    # 9) Hot Zone (skip "Unknown")
     zc: dict[str, int] = {}
     for k in kills_p:
-        zc[k["zone"]] = zc.get(k["zone"], 0) + 1
+        zone_name = k["zone"]
+        if zone_name == "Unknown":
+            continue
+        zc[zone_name] = zc.get(zone_name, 0) + 1
+
     if zc:
         zone, cnt = _top_list(zc, 1)[0]
         embed.add_field(name="📍 Hot Zone", value=f"{zone} ({cnt} kills)", inline=True)
@@ -1300,8 +1307,12 @@ async def toporgdeaths(
         if in_period(k["time"]):
             counts[org] = counts.get(org, 0) + 1
 
-    # 4) Filter out "Unknown" before picking top 10
-    filtered_counts = {o: c for o, c in counts.items() if o != "Unknown"}
+    # 4) Filter out unwanted organizations
+    filtered_counts = {
+        org: cnt
+        for org, cnt in counts.items()
+        if org not in ("Unknown", "THREER", "TRIPLER")
+    }
 
     # 5) Pick the top 10 orgs (after filtering)
     top_list = sorted(filtered_counts.items(), key=lambda x: x[1], reverse=True)[:10]
