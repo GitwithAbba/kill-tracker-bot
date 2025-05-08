@@ -981,11 +981,13 @@ async def compare(
         if mode == "ac-flight":
             return gm.startswith("EA_") and gm[3:] in {"SquadronBattle", "FreeFlight"}
         if mode == "ac-fps":
-            return gm.startswith("EA_") and gm[3:] in {
-                "Elimination",
-                "KillConfirmed",
-                "GunGame",
-            }
+            # strip EA_ prefix and any leading "FPS"
+            if not gm.startswith("EA_"):
+                return False
+            sub = gm[3:]  # e.g. "FPSGunGame" or "Elimination"
+            if sub.startswith("FPS"):
+                sub = sub[3:]  # -> "GunGame"
+            return sub in {"Elimination", "KillConfirmed", "GunGame"}
         return True
 
     # Single stats_for, incorporating both filters
