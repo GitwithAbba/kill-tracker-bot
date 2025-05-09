@@ -283,7 +283,11 @@ async def _build_summary_embed(period: str, emoji: str) -> discord.Embed:
     # 1) Fetch raw events
     kills, deaths = await _fetch_events()
     kills_p = [k for k in kills if _in_period(k["time"], period)]
-    deaths_p = [d for d in deaths if _in_period(d["time"], period)]
+    deaths_p = [
+        d
+        for d in deaths
+        if _in_period(d["time"], period) and d.get("damage_type") != "Suicide"
+    ]
 
     # 2) Totals
     total_kills = len(kills_p)
@@ -831,7 +835,7 @@ async def leaderboard(
     # Top 5 deaths
     death_counts: dict[str, int] = {}
     for e in deaths:
-        if in_period(e["time"]):
+        if in_period(e["time"]) and e.get("damage_type") != "Suicide":
             death_counts[e["victim"]] = death_counts.get(e["victim"], 0) + 1
     top_d = sorted(death_counts.items(), key=lambda x: x[1], reverse=True)[:5]
     death_lines = "\n".join(f"{i}. {p} — {c} Deaths" for i, (p, c) in enumerate(top_d))
@@ -842,7 +846,7 @@ async def leaderboard(
         if in_period(e["time"]):
             stats.setdefault(e["player"], {"kills": 0, "deaths": 0})["kills"] += 1
     for e in deaths:
-        if in_period(e["time"]):
+        if in_period(e["time"]) and e.get("damage_type") != "Suicide":
             stats.setdefault(e["victim"], {"kills": 0, "deaths": 0})["deaths"] += 1
     ratios = [
         (p, v["kills"], v["deaths"], v["kills"] / max(1, v["deaths"]))
@@ -891,7 +895,9 @@ async def stats(
         deaths = r_d.json()
 
     total_k = sum(1 for e in kills if e["player"] == target)
-    total_d = sum(1 for e in deaths if e["victim"] == target)
+    total_d = sum(
+        1 for e in deaths if e["victim"] == target and e.get("damage_type") != "Suicide"
+    )
     ratio = total_k / max(1, total_d)
 
     # top 5 orgs they've killed
@@ -1000,7 +1006,10 @@ async def compare(
         d = sum(
             1
             for e in deaths
-            if e["victim"] == handle and in_period(e["time"]) and in_mode(e)
+            if e["victim"] == handle
+            and in_period(e["time"])
+            and in_mode(e)
+            and e.get("damage_type") != "Suicide"
         )
         return k, d, k / max(1, d)
 
@@ -1183,7 +1192,11 @@ async def kd(
         1 for k in kills if k["player"] == target and in_period(k["time"])
     )
     total_deaths = sum(
-        1 for d in deaths if d["victim"] == target and in_period(d["time"])
+        1
+        for d in deaths
+        if d["victim"] == target
+        and in_period(d["time"])
+        and d.get("damage_type") != "Suicide"
     )
     ratio = total_kills / max(1, total_deaths)
 
