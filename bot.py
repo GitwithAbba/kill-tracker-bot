@@ -348,8 +348,12 @@ async def _build_summary_embed(period: str, emoji: str) -> discord.Embed:
     for k in kills_p:
         org = k.get("organization_name") or "Unknown"
         oc[org] = oc.get(org, 0) + 1
-    # filter out Unknown for leaderboard display
-    filtered = {o: c for o, c in oc.items() if o != "Unknown"}
+    # filter out Unknown, THREER, TRIPLER for leaderboard display
+    filtered = {
+        org: cnt
+        for org, cnt in oc.items()
+        if org not in ("Unknown", "THREER", "TRIPLER")
+    }
     lines = (
         "\n".join(
             f"{i}. {o} — {c} kills"
