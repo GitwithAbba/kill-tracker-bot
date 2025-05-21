@@ -179,31 +179,46 @@ class GenerateKeyView(discord.ui.View):
 
 ## Compute “since_time” for each period
 def _period_start_iso(period: str) -> str:
-    # local‐time → UTC ISO string
     now = datetime.now(EST)
+
     if period == "today":
         start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+
+    # 24 h rolling window (9 PM–9 PM)
     elif period == "daily":
         end = now.replace(hour=21, minute=0, second=0, microsecond=0)
         start = end - timedelta(days=1)
-    elif period == "weekly":
+
+    # last 7 days
+    elif period in ("week", "weekly"):
         start = now - timedelta(days=7)
-    elif period == "monthly":
-        # first day of last calendar month at midnight
+
+    # last calendar month
+    elif period in ("month", "monthly"):
         last_month = now.month - 1 or 12
         year = now.year - (1 if now.month == 1 else 0)
         start = datetime(year, last_month, 1, tzinfo=EST)
-    elif period == "quarterly":
-        q = (now.month - 1) // 3 or 4
+
+    # last calendar quarter
+    elif period in ("quarter", "quarterly"):
+        # same as before but accept "quarter":
+        q = ((now.month - 1) // 3) or 4
         year = now.year - (1 if q == 4 else 0)
         start = datetime(year, (q - 1) * 3 + 1, 1, tzinfo=EST)
+
+    # last calendar year
     elif period == "yearly":
         start = datetime(now.year - 1, 1, 1, tzinfo=EST)
+
+    # all time (no slice)
+    elif period in ("all", "all time"):
+        # pick a date far in the past so the slice includes everything
+        start = datetime(1970, 1, 1, tzinfo=EST)
+
     else:
         # fallback to a week
         start = now - timedelta(days=7)
 
-    # convert to UTC iso
     return start.astimezone(timezone.utc).isoformat()
 
 
@@ -365,9 +380,9 @@ async def _build_summary_embed(period: str, emoji: str) -> discord.Embed:
     # 6) Top Players by K/D
     stats: dict[str, dict[str, int]] = {}
     for k in kills_p:
-        stats.setdefault(k["player"], {"kills": 0, "deaths": 0})["kills"] = 1
+        stats.setdefault(k["player"], {"kills": 0, "deaths": 0})["kills"] += 1
     for d in deaths_p:
-        stats.setdefault(d["victim"], {"kills": 0, "deaths": 0})["deaths"] = 1
+        stats.setdefault(d["victim"], {"kills": 0, "deaths": 0})["deaths"] += 1
     ratios = {p: v["kills"] / max(1, v["deaths"]) for p, v in stats.items()}
     lines = (
         "\n".join(
@@ -415,7 +430,7 @@ async def _build_summary_embed(period: str, emoji: str) -> discord.Embed:
     zc: dict[str, int] = {}
     for k in kills_p:
         zone_name = k["zone"]
-        if zone_name == "Unknown":
+        if zone_name in ("Unknown", "N/A"):
             continue
         zc[zone_name] = zc.get(zone_name, 0) + 1
 
@@ -894,10 +909,10 @@ async def leaderboard(
     stats: dict[str, dict[str, int]] = {}
     for e in kills:
         if in_period(e["time"]):
-            stats.setdefault(e["player"], {"kills": 0, "deaths": 0})["kills"] = 1
+            stats.setdefault(e["player"], {"kills": 0, "deaths": 0})["kills"] += 1
     for e in deaths:
         if in_period(e["time"]) and e.get("damage_type") != "Suicide":
-            stats.setdefault(e["victim"], {"kills": 0, "deaths": 0})["deaths"] = 1
+            stats.setdefault(e["victim"], {"kills": 0, "deaths": 0})["deaths"] += 1
     ratios = [
         (p, v["kills"], v["deaths"], v["kills"] / max(1, v["deaths"]))
         for p, v in stats.items()
@@ -1179,10 +1194,10 @@ async def topkd(
     stats: dict[str, dict[str, int]] = {}
     for k in kills:
         if in_period(k["time"]):
-            stats.setdefault(k["player"], {"kills": 0, "deaths": 0})["kills"] = 1
+            stats.setdefault(k["player"], {"kills": 0, "deaths": 0})["kills"] += 1
     for d in deaths:
         if in_period(d["time"]):
-            stats.setdefault(d["victim"], {"kills": 0, "deaths": 0})["deaths"] = 1
+            stats.setdefault(d["victim"], {"kills": 0, "deaths": 0})["deaths"] += 1
 
     ratios = [
         (p, v["kills"], v["deaths"], v["kills"] / max(1, v["deaths"]))
