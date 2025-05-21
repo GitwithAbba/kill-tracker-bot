@@ -129,7 +129,7 @@ def format_mode(raw: str) -> str:
 
 
 last_kill_id = 0
-last_death_id = ""  # ISO timestamp
+last_death_id = 0  # track the highest death.id seen
 
 # ─── Bot setup ────────────────────────────────────────────────────────────────────
 intents = discord.Intents.default()
@@ -177,6 +177,36 @@ class GenerateKeyView(discord.ui.View):
             )
 
 
+## Compute “since_time” for each period
+def _period_start_iso(period: str) -> str:
+    # local‐time → UTC ISO string
+    now = datetime.now(EST)
+    if period == "today":
+        start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    elif period == "daily":
+        end = now.replace(hour=21, minute=0, second=0, microsecond=0)
+        start = end - timedelta(days=1)
+    elif period == "weekly":
+        start = now - timedelta(days=7)
+    elif period == "monthly":
+        # first day of last calendar month at midnight
+        last_month = now.month - 1 or 12
+        year = now.year - (1 if now.month == 1 else 0)
+        start = datetime(year, last_month, 1, tzinfo=EST)
+    elif period == "quarterly":
+        q = (now.month - 1) // 3 or 4
+        year = now.year - (1 if q == 4 else 0)
+        start = datetime(year, (q - 1) * 3 + 1, 1, tzinfo=EST)
+    elif period == "yearly":
+        start = datetime(now.year - 1, 1, 1, tzinfo=EST)
+    else:
+        # fallback to a week
+        start = now - timedelta(days=7)
+
+    # convert to UTC iso
+    return start.astimezone(timezone.utc).isoformat()
+
+
 # ─── TEST COMMANDS ─────────────────────────────────────────────────────────────
 
 
@@ -204,16 +234,20 @@ async def testtoday(interaction: discord.Interaction):
 STAR_CITIZEN_FEED_ID = int(os.getenv("STAR_CITIZEN_FEED"))
 
 
-async def _fetch_events():
+async def _fetch_events_for_period(period: str):
+    iso_start = _period_start_iso(period)
+    headers = {"Authorization": f"Bearer {API_KEY}"}
     async with httpx.AsyncClient() as client:
         r_k = await client.get(
             f"{API_BASE}/kills",
-            headers={"Authorization": f"Bearer {API_KEY}"},
+            params={"since_time": iso_start},
+            headers=headers,
             timeout=10.0,
         )
         r_d = await client.get(
             f"{API_BASE}/deaths",
-            headers={"Authorization": f"Bearer {API_KEY}"},
+            params={"since_time": iso_start},
+            headers=headers,
             timeout=10.0,
         )
         r_k.raise_for_status()
@@ -279,9 +313,9 @@ def _top_list(counts: dict, top_n: int = 5) -> list[tuple]:
 
 
 async def _build_summary_embed(period: str, emoji: str) -> discord.Embed:
-    # … your existing cool‐features embed code unchanged …
-    # 1) Fetch raw events
-    kills, deaths = await _fetch_events()
+    # 1) only fetch events since period start
+    kills, deaths = await _fetch_events_for_period(period)
+    # 2) existing logic for filtering, counting, embedding…
     kills_p = [k for k in kills if _in_period(k["time"], period)]
     deaths_p = [
         d
@@ -331,9 +365,9 @@ async def _build_summary_embed(period: str, emoji: str) -> discord.Embed:
     # 6) Top Players by K/D
     stats: dict[str, dict[str, int]] = {}
     for k in kills_p:
-        stats.setdefault(k["player"], {"kills": 0, "deaths": 0})["kills"] += 1
+        stats.setdefault(k["player"], {"kills": 0, "deaths": 0})["kills"] = 1
     for d in deaths_p:
-        stats.setdefault(d["victim"], {"kills": 0, "deaths": 0})["deaths"] += 1
+        stats.setdefault(d["victim"], {"kills": 0, "deaths": 0})["deaths"] = 1
     ratios = {p: v["kills"] / max(1, v["deaths"]) for p, v in stats.items()}
     lines = (
         "\n".join(
@@ -411,8 +445,8 @@ _PERIOD_DESC = {
 
 async def _build_top_pu_embed(period: str) -> discord.Embed:
     """Top 10 kills in Persistent Universe."""
-    kills, _ = await _fetch_events()
-    # filter by period + PU game_mode
+    kills, _ = await _fetch_events_for_period(period)
+    # filter by period  PU game_mode
     filtered = [
         k
         for k in kills
@@ -435,7 +469,7 @@ async def _build_top_pu_embed(period: str) -> discord.Embed:
 
 async def _build_top_ac_flight_embed(period: str) -> discord.Embed:
     """Top 10 kills in AC Flight modes (Squadron Battle & Free Flight)."""
-    kills, _ = await _fetch_events()
+    kills, _ = await _fetch_events_for_period(period)
     modes = {"SquadronBattle", "FreeFlight"}
     filtered = [
         k
@@ -461,12 +495,12 @@ async def _build_top_ac_flight_embed(period: str) -> discord.Embed:
 
 async def _build_top_ac_fps_embed(period: str) -> discord.Embed:
     """Top 10 kills in AC FPS modes (Elimination, Kill Confirmed, Gun Game)."""
-    kills, _ = await _fetch_events()
+    kills, _ = await _fetch_events_for_period(period)
 
     # the “pure” FPS mode names we care about
     modes = {"Elimination", "KillConfirmed", "GunGame"}
 
-    # filter by period + EA_ prefix + FPS suffix stripped
+    # filter by period  EA_ prefix  FPS suffix stripped
     filtered = []
     for k in kills:
         if not _in_period(k["time"], period):
@@ -501,7 +535,7 @@ async def _build_top_ac_fps_embed(period: str) -> discord.Embed:
         for i, (player, cnt) in enumerate(top10, start=1):
             embed.add_field(name=f"{i}. {player}", value=f"{cnt} kills", inline=False)
     else:
-        embed.description += "\n\n_No kills recorded for these modes in this period._"
+        embed.description = "\n\n_No kills recorded for these modes in this period._"
 
     return embed
 
@@ -639,7 +673,7 @@ async def on_ready():
         all_d = resp.json()
     if all_d:
         global last_death_id
-        last_death_id = max(d["time"] for d in all_d)
+        last_death_id = max(d["id"] for d in all_d)
 
     # start your kill loop
     if not fetch_and_post_kills.is_running():
@@ -806,12 +840,24 @@ async def leaderboard(
     period: str,
 ):
     await interaction.response.defer()
+    # only fetch events since the start of this period
+    iso_start = _period_start_iso(period)
     headers = {"Authorization": f"Bearer {API_KEY}"}
 
-    # fetch both
+    # fetch only this period’s kills & deaths
     async with httpx.AsyncClient() as client:
-        r_k = await client.get(f"{API_BASE}/kills", headers=headers, timeout=10.0)
-        r_d = await client.get(f"{API_BASE}/deaths", headers=headers, timeout=10.0)
+        r_k = await client.get(
+            f"{API_BASE}/kills",
+            params={"since_time": iso_start},
+            headers=headers,
+            timeout=10.0,
+        )
+        r_d = await client.get(
+            f"{API_BASE}/deaths",
+            params={"since_time": iso_start},
+            headers=headers,
+            timeout=10.0,
+        )
         r_k.raise_for_status()
         r_d.raise_for_status()
         kills = r_k.json()
@@ -848,17 +894,17 @@ async def leaderboard(
     stats: dict[str, dict[str, int]] = {}
     for e in kills:
         if in_period(e["time"]):
-            stats.setdefault(e["player"], {"kills": 0, "deaths": 0})["kills"] += 1
+            stats.setdefault(e["player"], {"kills": 0, "deaths": 0})["kills"] = 1
     for e in deaths:
         if in_period(e["time"]) and e.get("damage_type") != "Suicide":
-            stats.setdefault(e["victim"], {"kills": 0, "deaths": 0})["deaths"] += 1
+            stats.setdefault(e["victim"], {"kills": 0, "deaths": 0})["deaths"] = 1
     ratios = [
         (p, v["kills"], v["deaths"], v["kills"] / max(1, v["deaths"]))
         for p, v in stats.items()
     ]
     top_ratio = sorted(ratios, key=lambda x: x[3], reverse=True)[:5]
     kd_lines = "\n".join(
-        f"{i+1}. {p} — {ratio:.2f}" for i, (p, _, _, ratio) in enumerate(top_ratio)
+        f"{i}. {p} — {ratio:.2f}" for i, (p, _, _, ratio) in enumerate(top_ratio)
     )
 
     embed = discord.Embed(
@@ -1039,17 +1085,31 @@ async def compare(
 # ─── /kills ──────────────────────────────────────────────────────────────────────
 @bot.tree.command(
     name="kills",
-    description="Show the most recent kills",
+    description="Show kills for a given period",
     guild=discord.Object(id=GUILD_ID),
 )
-async def kills(interaction: discord.Interaction):
+@app_commands.describe(period="Which time window to show kills for")
+@app_commands.choices(
+    period=[
+        Choice(name="Today", value="today"),
+        Choice(name="Daily", value="daily"),
+        Choice(name="Weekly", value="weekly"),
+        Choice(name="Monthly", value="monthly"),
+    ]
+)
+async def kills(interaction: discord.Interaction, period: str):
+    iso_start = _period_start_iso(period)  # now `period` is defined
     await interaction.response.defer()
-    headers = {"Authorization": f"Bearer {API_KEY}"}
     try:
         async with httpx.AsyncClient() as client:
-            resp = await client.get(f"{API_BASE}/kills", headers=headers, timeout=10.0)
-        resp.raise_for_status()
-        data = resp.json()
+            resp = await client.get(
+                f"{API_BASE}/kills",
+                params={"since_time": iso_start},
+                headers={"Authorization": f"Bearer {API_KEY}"},
+                timeout=10.0,
+            )
+            resp.raise_for_status()
+            data = resp.json()
     except httpx.HTTPStatusError:
         return await interaction.followup.send(
             f"❌ ListKills failed [{resp.status_code}]:\n```{resp.text}```"
@@ -1119,10 +1179,10 @@ async def topkd(
     stats: dict[str, dict[str, int]] = {}
     for k in kills:
         if in_period(k["time"]):
-            stats.setdefault(k["player"], {"kills": 0, "deaths": 0})["kills"] += 1
+            stats.setdefault(k["player"], {"kills": 0, "deaths": 0})["kills"] = 1
     for d in deaths:
         if in_period(d["time"]):
-            stats.setdefault(d["victim"], {"kills": 0, "deaths": 0})["deaths"] += 1
+            stats.setdefault(d["victim"], {"kills": 0, "deaths": 0})["deaths"] = 1
 
     ratios = [
         (p, v["kills"], v["deaths"], v["kills"] / max(1, v["deaths"]))
@@ -1242,9 +1302,15 @@ async def topkills(
     interaction: discord.Interaction, mode: str, period: str, limit: int = 10
 ):
     await interaction.response.defer()
+    iso_start = _period_start_iso(period)
     headers = {"Authorization": f"Bearer {API_KEY}"}
     async with httpx.AsyncClient() as client:
-        resp = await client.get(f"{API_BASE}/kills", headers=headers, timeout=10.0)
+        resp = await client.get(
+            f"{API_BASE}/kills",
+            params={"since_time": iso_start},
+            headers=headers,
+            timeout=10.0,
+        )
         resp.raise_for_status()
         data = resp.json()
 
@@ -1299,11 +1365,17 @@ async def toporgdeaths(
     period: str,
 ):
     await interaction.response.defer()
+    iso_start = _period_start_iso(period)
     headers = {"Authorization": f"Bearer {API_KEY}"}
 
     # 1) Fetch all kills
     async with httpx.AsyncClient() as client:
-        resp = await client.get(f"{API_BASE}/kills", headers=headers, timeout=10.0)
+        resp = await client.get(
+            f"{API_BASE}/kills",
+            params={"since_time": iso_start},
+            headers=headers,
+            timeout=10.0,
+        )
         resp.raise_for_status()
         kills = resp.json()
 
@@ -1377,9 +1449,16 @@ async def topdeaths(
     limit: int = 10,
 ):
     await interaction.response.defer()
+    # only fetch deaths since the start of this period
+    iso_start = _period_start_iso(period)
     headers = {"Authorization": f"Bearer {API_KEY}"}
     async with httpx.AsyncClient() as client:
-        resp = await client.get(f"{API_BASE}/deaths", headers=headers, timeout=10.0)
+        resp = await client.get(
+            f"{API_BASE}/deaths",
+            params={"since_time": iso_start},
+            headers=headers,
+            timeout=10.0,
+        )
         resp.raise_for_status()
         deaths = resp.json()
 
@@ -1421,6 +1500,7 @@ async def fetch_and_post_kills():
         async with httpx.AsyncClient() as client:
             resp = await client.get(
                 f"{API_BASE}/kills",
+                params={"since": last_kill_id},  # <<–– only pull new ones
                 headers={"Authorization": f"Bearer {API_KEY}"},
                 timeout=10.0,
             )
@@ -1513,11 +1593,11 @@ async def fetch_and_post_kills():
 async def fetch_and_post_deaths():
     global last_death_id
 
-    # 1) fetch from your backend, but catch any errors so the loop won't die
     try:
         async with httpx.AsyncClient() as client:
             resp = await client.get(
                 f"{API_BASE}/deaths",
+                params={"since": last_death_id},  # <<–– only pull new ones
                 headers={"Authorization": f"Bearer {API_KEY}"},
                 timeout=10.0,
             )
@@ -1527,10 +1607,11 @@ async def fetch_and_post_deaths():
         logging.error(
             "⚠️ fetch_and_post_deaths failed, will retry next iteration", exc_info=e
         )
-        return  # swallow and let the loop fire again in 10s
+        return
 
-    for death in sorted(deaths, key=lambda e: e["time"]):
-        if death["time"] <= last_death_id:
+    for death in sorted(deaths, key=lambda e: e["id"]):
+        # skip any we’ve already seen
+        if death["id"] <= last_death_id:
             continue
 
         file_to_attach = discord.File(
@@ -1603,7 +1684,7 @@ async def fetch_and_post_deaths():
         embed.set_thumbnail(url=thumb)
         await channel.send(embed=embed, file=file_to_attach)
 
-        last_death_id = death["time"]
+        last_death_id = death["id"]
 
 
 # ─── Health check server ────────────────────────────────────────────────────────
