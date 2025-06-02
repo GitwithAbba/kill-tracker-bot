@@ -513,7 +513,7 @@ async def _build_top_ac_fps_embed(period: str) -> discord.Embed:
     kills, _ = await _fetch_events_for_period(period)
 
     # the “pure” FPS mode names we care about
-    modes = {"Elimination", "KillConfirmed", "GunGame"}
+    modes = {"TeamElimination", "KillConfirmed", "GunGame"}
 
     # filter by period  EA_ prefix  FPS suffix stripped
     filtered = []
@@ -734,7 +734,7 @@ async def on_ready():
     submode=[
         Choice(name="Squadron Battle", value="SquadronBattle"),
         Choice(name="Free Flight", value="FreeFlight"),
-        Choice(name="Elimination", value="Elimination"),
+        Choice(name="Elimination", value="TeamElimination"),
         Choice(name="Kill Confirmed", value="KillConfirmed"),
         Choice(name="Gun Game", value="GunGame"),
     ],
@@ -1058,7 +1058,7 @@ async def compare(
             sub = gm[3:]  # e.g. "FPSGunGame" or "Elimination"
             if sub.startswith("FPS"):
                 sub = sub[3:]  # -> "GunGame"
-            return sub in {"Elimination", "KillConfirmed", "GunGame"}
+            return sub in {"TeamElimination", "KillConfirmed", "GunGame"}
         return True
 
     # Single stats_for, incorporating both filters
