@@ -662,7 +662,6 @@ async def on_ready():
                     "client to post your kills in the #💀pu-kill-feed and/or "
                     "#💀ac-kill-feed.\n\n"
                     "Each key is valid for 72 hours. You may generate a new key at any time.\n\n"
-                    "[Download BV KillTracker](https://example.com/download)\n"
                 ),
                 color=discord.Color.dark_gray(),
             )
