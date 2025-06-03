@@ -655,7 +655,7 @@ async def on_ready():
                 break
         else:
             embed = discord.Embed(
-                title="Generate BlightVeil Kill Tracker Key",
+                title="Generate RRRthurTracker Key",
                 description=(
                     "Click the button below to generate a unique key for the "
                     "RRRthur Pirate Kill Tracker. Use this key in your kill tracker "
