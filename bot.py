@@ -46,7 +46,7 @@ EST = ZoneInfo("America/New_York")
 GUILD_ID = int(os.getenv("GUILD_ID"))
 
 # ─── ignore these NPCs ────────────────────────────────────────────────────────────
-IGNORED_VICTIM_PREFIX = ("vlk_juvenile_", "vlk_adult_" "Quasigrazer")
+IGNORED_VICTIM_PREFIX = ("vlk_juvenile_", "vlk_adult_", "Quasigrazer")
 
 # ─── weapon name translations ─────────────────────────────────────────────────────
 WEAPON_NAME_MAP: dict[str, str] = {
